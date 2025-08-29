@@ -149,8 +149,13 @@ async function join() {
   speakerDelay.value = String(persisted.speakerDelayMs || 0);
   speakerDelayVal.textContent = `${speakerDelay.value} ms`;
 
+  // const urlParamWS = new URLSearchParams(location.search).get("ws");
+  // const ctrlUrl = urlParamWS || `${location.protocol}//${location.host}`;
+  const DEFAULT_WS = "wss://ws.porchlogic.com"; // your droplet's WS endpoint
   const urlParamWS = new URLSearchParams(location.search).get("ws");
-  const ctrlUrl = urlParamWS || `${location.protocol}//${location.host}`;
+  const storedWS = localStorage.getItem("ws_override"); // optional user override
+  const ctrlUrl = urlParamWS || storedWS || DEFAULT_WS;
+
   control = new ControlChannel({ url: ctrlUrl, swarmHash: state.swarmHash, userId: state.userId, debugEl });
   await control.connect();
   connStatus.textContent = "connected";
