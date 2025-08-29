@@ -38,3 +38,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .badge.error { background: #3a1414; border-color: #7a1e1e; }
 
 pre#debugLog { max-height: 180px; overflow: auto; background: #0b0b0b; border: 1px solid #222; padding: 8px; border-radius: 8px; }
+
+#speakerDelay {
+  width:100%;
+}

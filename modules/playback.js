@@ -13,7 +13,7 @@ export class Playback {
   }
 
   setSpeakerDelay(ms) {
-    this.speakerDelayMs = clamp(ms|0, 0, 500);
+    this.speakerDelayMs = clamp(ms|0, 0, 2500);
     if (this.delay && this.ctx) {
       const t = this.ctx.currentTime;
       this.delay.delayTime.cancelScheduledValues(t);
