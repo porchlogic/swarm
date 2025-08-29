@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Swarm Sync Audio (MVP)</title>
+  <link rel="stylesheet" href="./style.css" />
+  <!-- WebTorrent for P2P file sharing (browser) -->
+  <script src="https://cdn.jsdelivr.net/npm/webtorrent@latest/webtorrent.min.js"></script>
+</head>
+<body>
+  <div id="app">
+    <header>
+      <h1>Swarm Sync Audio</h1>
+      <div class="status">
+        <span id="connStatus">disconnected</span> •
+        <span id="swarmPeers">peers: 0</span> •
+        <span id="directorStatus">director: ?</span> •
+        <span id="clockStatus">offset: —</span>
+      </div>
+      <div id="errorBanner"
+        style="display:none;margin-top:8px;padding:8px;border:1px solid #703; background:#300; color:#fbb; border-radius:8px;">
+      </div>
+
+    </header>
+
+    <section id="joinSection">
+      <h2>Join a swarm</h2>
+      <div class="row">
+        <input id="swarmKey" placeholder="enter swarm key" />
+        <button id="joinBtn">Join</button>
+        <button id="leaveBtn" disabled>Leave</button>
+      </div>
+    </section>
+
+    <section id="fileSection" class="hidden">
+      <h2>Files</h2>
+      <div class="row">
+        <input id="fileInput" type="file" multiple accept="audio/*" />
+        <button id="seedBtn">Add & Seed</button>
+        <span class="hint">limit: 3 files</span>
+      </div>
+      <div id="fileList"></div>
+    </section>
+
+    <section id="playbackSection" class="hidden">
+      <h2>Playback</h2>
+      <div class="row">
+        <button id="playBtn" disabled>Play</button>
+        <button id="stopBtn" disabled>Stop</button>
+        <label id="currentFileLabel">No file selected</label>
+      </div>
+      <div class="row">
+        <label>Speaker delay (ms):</label>
+        <input id="speakerDelay" type="range" min="0" max="500" value="0" />
+        <span id="speakerDelayVal">0 ms</span>
+      </div>
+      <div class="row">
+        <button id="takeDirectorBtn">Take director</button>
+        <button id="resignDirectorBtn">Resign</button>
+      </div>
+      <div class="row">
+        <details>
+          <summary>Debug</summary>
+          <pre id="debugLog"></pre>
+        </details>
+      </div>
+    </section>
+  </div>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

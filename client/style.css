@@ -1,0 +1,40 @@
+
+* { box-sizing: border-box; }
+body {
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  margin: 0; padding: 0;
+  background: #0a0a0a; color: #eaeaea;
+}
+#app { max-width: 960px; margin: 0 auto; padding: 16px; }
+
+header { display: flex; align-items: baseline; gap: 12px; }
+header h1 { margin: 0; font-size: 20px; font-weight: 700; }
+.status { opacity: 0.8; font-size: 12px; }
+
+section { margin: 18px 0; padding: 12px; border: 1px solid #222; border-radius: 12px; background: #121212; }
+section h2 { margin-top: 0; font-size: 16px; }
+.hidden { display: none; }
+
+.row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
+input, button, label {
+  font-size: 14px;
+}
+input[type="text"], input[type="file"], input[type="range"], input#swarmKey {
+  background: #1a1a1a; color: #eaeaea; border: 1px solid #333; padding: 8px; border-radius: 8px;
+}
+button {
+  background: #222; color: #fafafa; border: 1px solid #333; padding: 8px 12px; border-radius: 10px; cursor: pointer;
+}
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+.hint { opacity: 0.7; font-size: 12px; }
+
+#fileList { display: grid; grid-template-columns: 1fr auto auto; gap: 6px 8px; }
+.file-row { padding: 8px; border: 1px solid #222; border-radius: 8px; background: #0f0f0f; grid-column: 1 / -1; display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center; }
+.file-row span { font-size: 13px; }
+.badge { padding: 2px 6px; border-radius: 6px; font-size: 12px; background: #222; border: 1px solid #333; }
+.badge.ready { background: #143016; border-color: #1f5f25; }
+.badge.fetching { background: #2a1d10; border-color: #7a4a12; }
+.badge.seeding { background: #10232d; border-color: #1e5a7a; }
+.badge.error { background: #3a1414; border-color: #7a1e1e; }
+
+pre#debugLog { max-height: 180px; overflow: auto; background: #0b0b0b; border: 1px solid #222; padding: 8px; border-radius: 8px; }
