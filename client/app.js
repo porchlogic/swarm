@@ -1,6 +1,7 @@
 
+// app.js — use a single base offset everywhere; gate play until locked; re-announce files on join
 import { sha256Hex, nanoid, log } from "./modules/util.js";
-import { OffsetEstimator } from "./modules/timing.js";
+import { OffsetEstimator } from "./modules/timing.js"; // from earlier version or patch5 if applied
 import { ControlChannel } from "./modules/control.js";
 import { SwarmFiles } from "./modules/swarm.js";
 import { Playback } from "./modules/playback.js";
@@ -41,31 +42,33 @@ let state = {
   globalStartTimeMs: null
 };
 
-// Persist keys
 const LS_KEYS = {
   baseOffset: (swarmHash) => `swarm_base_offset_${swarmHash}`,
+  baseOffsetTs: (swarmHash) => `swarm_base_offset_ts_${swarmHash}`,
   speakerDelay: (swarmHash) => `swarm_speaker_delay_${swarmHash}`
 };
 
 function loadPersisted(swarmHash) {
   const off = parseFloat(localStorage.getItem(LS_KEYS.baseOffset(swarmHash)));
+  const ts  = parseInt(localStorage.getItem(LS_KEYS.baseOffsetTs(swarmHash)), 10);
   const spk = parseInt(localStorage.getItem(LS_KEYS.speakerDelay(swarmHash)), 10);
   return {
     baseOffsetMs: Number.isFinite(off) ? off : null,
+    baseOffsetTs: Number.isFinite(ts) ? ts : 0,
     speakerDelayMs: Number.isFinite(spk) ? spk : 0
   };
 }
-
 function saveBaseOffset(swarmHash, ms) {
   localStorage.setItem(LS_KEYS.baseOffset(swarmHash), String(ms|0));
+  localStorage.setItem(LS_KEYS.baseOffsetTs(swarmHash), String(Date.now()));
 }
 function saveSpeakerDelay(swarmHash, ms) {
   localStorage.setItem(LS_KEYS.speakerDelay(swarmHash), String(ms|0));
 }
 
-// Provide globalNow via offset estimator
+// Global time = Date.now() + baseOffset
 function getGlobalNow() {
-  return Date.now() + (offset?.currentOffsetMs() || 0);
+  return Date.now() + (offset?.baseOffsetMs || 0);
 }
 
 function renderFiles() {
@@ -77,10 +80,9 @@ function renderFiles() {
       onSelectToggle: (fileId) => {
         state.currentFileId = fileId;
         currentFileLabel.textContent = `Selected: ${f.name}`;
-        if (director?.isDirector) {
-          control.send("selectFile", { fileId });
-        }
+        if (director?.isDirector) control.send("selectFile", { fileId });
         updatePlaybackButtons();
+        if (f.ready) playback.ensureDecoded(fileId, f.blobUrl).catch(()=>{});
       }
     }));
   }
@@ -88,18 +90,25 @@ function renderFiles() {
 
 function updatePlaybackButtons() {
   const hasFile = !!(state.currentFileId && swarm?.getMeta(state.currentFileId)?.ready);
-  setDisabled("playBtn", !(director?.isDirector && hasFile && !state.playing));
+  const canPlay = director?.isDirector && hasFile && !state.playing && !!offset?.baseLocked;
+  setDisabled("playBtn", !canPlay);
   setDisabled("stopBtn", !(director?.isDirector && state.playing));
 }
 
 function updateTopBar() {
   setText("directorStatus", `director: ${director?.isDirector ? "you" : (director?.currentDirectorId || "?")}`);
   setText("swarmPeers", `peers: ${director?.peers?.length || 0}`);
-  const off = offset?.currentOffsetMs() ?? 0;
-  setText("clockStatus", `offset: ${off.toFixed(0)}ms`);
+  const off = offset?.baseOffsetMs ?? 0;
+  setText("clockStatus", `offset(base): ${off|0}ms`);
 }
 
 async function playFromMessage(m) {
+  if (!offset?.baseLocked) {
+    log(debugEl, "Play arrived but baseOffset not locked yet; waiting...");
+    // wait briefly for lock (up to 1s)
+    const t0 = Date.now();
+    while (!offset.baseLocked && Date.now()-t0 < 1000) await new Promise(r=>setTimeout(r,50));
+  }
   if (!state.currentFileId) state.currentFileId = m.fileId;
   const meta = swarm.getMeta(m.fileId);
   if (!meta || !meta.ready) {
@@ -107,14 +116,12 @@ async function playFromMessage(m) {
     while (true) {
       const mm = swarm.getMeta(m.fileId);
       if (mm?.ready) break;
-      await new Promise(r => setTimeout(r, 250));
+      await new Promise(r => setTimeout(r, 200));
     }
   }
-  // const buf = await playback.loadFromBlobUrl(swarm.getMeta(m.fileId).blobUrl);
-  const buf = await playback.ensureDecoded(m.fileId, meta.blobUrl);
+  const buf = await playback.ensureDecoded(m.fileId, swarm.getMeta(m.fileId).blobUrl);
   state.globalStartTimeMs = m.globalStartTimeMs;
   await playback.ensureCtx();
-  // Do NOT unlock/lock repeatedly; base offset is stable for session.
   playback.start({ buffer: buf, fileId: m.fileId, globalStartTimeMs: m.globalStartTimeMs });
   state.playing = true;
   updatePlaybackButtons();
@@ -133,19 +140,15 @@ async function join() {
   state.swarmHash = await sha256Hex(key);
   log(debugEl, `swarmHash: ${state.swarmHash}`);
 
-  offset = new OffsetEstimator();
+  offset = new OffsetEstimator(); // robust version if you applied patch5; otherwise existing works
   const persisted = loadPersisted(state.swarmHash);
 
   playback = new Playback({ debugEl });
   playback.setGlobalNowProvider(() => getGlobalNow());
-  playback.setOffsetProvider(() => offset.baseOffsetMs);
-
-  // Persisted speaker delay applied before ctx chain
   playback.setSpeakerDelay(persisted.speakerDelayMs || 0);
   speakerDelay.value = String(persisted.speakerDelayMs || 0);
   speakerDelayVal.textContent = `${speakerDelay.value} ms`;
 
-  // WS origin: allow ?ws=wss://host override for production
   const urlParamWS = new URLSearchParams(location.search).get("ws");
   const ctrlUrl = urlParamWS || `${location.protocol}//${location.host}`;
   control = new ControlChannel({ url: ctrlUrl, swarmHash: state.swarmHash, userId: state.userId, debugEl });
@@ -156,15 +159,21 @@ async function join() {
   setDisabled("leaveBtn", false);
   setDisabled("joinBtn", true);
 
-  await (async () => { try { await playback.ensureCtx(); } catch { } })();
-
-  // preroll pings
   control.startClockPings(5);
-
   director = new Director({ control, debugEl });
 
   control.on("joined", (m) => { director.updatePeers(m.peers || []); updateTopBar(); });
   control.on("peers",  (m) => { director.updatePeers(m.peers || []); updateTopBar(); });
+
+  // Re-announce local files when a peer joins (so refreshed peers repopulate)
+  control.on("presence", (m) => {
+    if (m.action === "join") {
+      const locals = swarm.getLocalMetas?.() || [];
+      for (const lf of locals) {
+        control.send("file:announce", { fileId: lf.fileId, name: lf.name, size: lf.size, infoHash: lf.infoHash, magnet: lf.magnet });
+      }
+    }
+  });
 
   control.on("timePong", (m) => {
     const t1 = Date.now();
@@ -181,17 +190,13 @@ async function join() {
     updatePlaybackButtons();
   });
 
-  control.on("selectFile", async (m) => {
+  control.on("selectFile", (m) => {
     state.currentFileId = m.fileId;
     const meta = swarm.getMeta(m.fileId);
     currentFileLabel.textContent = meta ? `Selected: ${meta.name}` : `Selected: ${m.fileId}`;
     updatePlaybackButtons();
-    // Pre-decode in the background (safe no-op if already cached)
-    if (meta?.ready) {
-      playback.ensureDecoded(m.fileId, meta.blobUrl).catch(() => { });
-    }
+    if (meta?.ready) playback.ensureDecoded(m.fileId, meta.blobUrl).catch(()=>{});
   });
-
 
   control.on("play", async (m) => { await playFromMessage(m); });
   control.on("stop", () => { stopFromMessage(); });
@@ -202,19 +207,24 @@ async function join() {
     setDisabled("joinBtn", false);
   });
 
-  // Lock base offset immediately if persisted, otherwise after a brief preroll window
+  try { await playback.ensureCtx(); } catch {}
+
+  // Lock base offset quickly & deterministically:
+  //  - If we have a persisted value, reuse it immediately.
+  //  - Else, after ~1.2s of preroll, lock whatever estimate we have (even large).
   if (persisted.baseOffsetMs !== null) {
     offset.baseLocked = true;
     offset.baseOffsetMs = persisted.baseOffsetMs;
-    log(debugEl, `Using persisted baseOffset: ${offset.baseOffsetMs.toFixed(0)}ms`);
+    log(debugEl, `Using persisted baseOffset: ${offset.baseOffsetMs|0}ms`);
   } else {
     setTimeout(() => {
       if (!offset.baseLocked) {
         offset.lockBase();
         saveBaseOffset(state.swarmHash, offset.baseOffsetMs);
-        log(debugEl, `Locked baseOffset: ${offset.baseOffsetMs.toFixed(0)}ms`);
+        log(debugEl, `Locked baseOffset: ${offset.baseOffsetMs|0}ms`);
       }
-    }, 1500);
+      updatePlaybackButtons();
+    }, 1200);
   }
 
   renderFiles();
@@ -222,7 +232,7 @@ async function join() {
   updateTopBar();
 }
 
-// UI bindings
+// UI
 joinBtn.onclick = async () => {
   try { await join(); }
   catch (err) {
@@ -242,21 +252,19 @@ seedBtn.onclick = async () => {
 };
 
 playBtn.onclick = async () => {
-  if (!director.isDirector || !state.currentFileId) return;
+  if (!director.isDirector || !state.currentFileId || !offset.baseLocked) return;
   const meta = swarm.getMeta(state.currentFileId);
-  // If not decoded yet, give more headroom; else shorter is fine
-  const isCached = playback.cache.has(state.currentFileId);
+  const isCached = playback._cache?.has?.(state.currentFileId);
   const startInMs = isCached ? 1200 : 2600;
 
-  // Make sure this device has the buffer ready before scheduling
+  // Make sure our buffer is ready before we pick a start time
   const buf = await playback.ensureDecoded(state.currentFileId, meta.blobUrl);
 
-  const globalStartTimeMs = Date.now() + (offset?.currentOffsetMs() || 0) + startInMs;
+  const globalStartTimeMs = getGlobalNow() + startInMs;
   const m = { fileId: state.currentFileId, globalStartTimeMs };
   control.send("play", m);
-  await playFromMessage(m); // uses the same globalStartTimeMs
+  await playFromMessage(m);
 };
-
 
 stopBtn.onclick = () => {
   if (!director.isDirector) return;
@@ -273,5 +281,3 @@ speakerDelay.oninput = () => {
 
 takeDirectorBtn.onclick = () => director?.take();
 resignDirectorBtn.onclick = () => director?.resign();
-
-// No drift loop. Offset is locked and stable for session.

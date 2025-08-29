@@ -1,5 +1,5 @@
 
-// swarm.js — use WebTorrent's getBlob in browsers to build Blob URLs
+// swarm.js — expose getLocalMetas for re-announce
 import { log } from "./util.js";
 
 const DEFAULT_TRACKERS = [
@@ -19,6 +19,7 @@ export class SwarmFiles {
   }
 
   getAll() { return [...this.local.values(), ...this.remote.values()]; }
+  getLocalMetas() { return [...this.local.values()]; }
 
   async seedFiles(fileList, onAnnounce) {
     const files = [...fileList];

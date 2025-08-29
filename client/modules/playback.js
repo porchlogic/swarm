@@ -1,5 +1,5 @@
 
-// playback.js — DelayNode for live speaker-delay; no playbackRate nudging.
+// playback.js — schedule purely against global time; delay node for speaker delay
 import { clamp, log } from "./util.js";
 
 export class Playback {
@@ -7,10 +7,8 @@ export class Playback {
     this.debugEl = debugEl;
     this.ctx = null;
     this.delay = null;
-    this.cache = new Map();
-    this.current = null; // { buffer, src, startedAtGlobal, fileId }
+    this.current = null;
     this.speakerDelayMs = 0;
-    this.baseOffsetMsFn = () => 0;
     this.getGlobalNowMs = () => Date.now();
   }
 
@@ -23,7 +21,6 @@ export class Playback {
     }
   }
 
-  setOffsetProvider(fn) { this.baseOffsetMsFn = fn; }
   setGlobalNowProvider(fn) { this.getGlobalNowMs = fn; }
 
   async ensureCtx() {
@@ -36,28 +33,13 @@ export class Playback {
     }
   }
 
-  async decodeToBuffer(blobUrl) {
+  async ensureDecoded(fileId, blobUrl) {
     await this.ensureCtx();
-    const t0 = performance.now();
+    if (!this._cache) this._cache = new Map();
+    if (this._cache.has(fileId)) return this._cache.get(fileId);
     const ab = await (await fetch(blobUrl)).arrayBuffer();
     const buf = await this.ctx.decodeAudioData(ab);
-    // Optional: log decode time
-    // log(this.debugEl, `decode ${((performance.now()-t0)|0)}ms`);
-    return buf;
-  }
-
-  async ensureDecoded(fileId, blobUrl) {
-    if (this.cache.has(fileId)) return this.cache.get(fileId);
-    const buf = await this.decodeToBuffer(blobUrl);
-    this.cache.set(fileId, buf);
-    return buf;
-  }
-
-  async loadFromBlobUrl(blobUrl) {
-    await this.ensureCtx();
-    const resp = await fetch(blobUrl);
-    const ab = await resp.arrayBuffer();
-    const buf = await this.ctx.decodeAudioData(ab);
+    this._cache.set(fileId, buf);
     return buf;
   }
 
@@ -73,22 +55,18 @@ export class Playback {
     this.stop();
     const src = this.ctx.createBufferSource();
     src.buffer = buffer;
-    // Route through delay node so the slider is audible during playback
     src.connect(this.delay);
 
     const nowGlobalMs = this.getGlobalNowMs();
-    const offsetMs = this.baseOffsetMsFn();
-    const localStartMs = globalStartTimeMs + offsetMs; // speaker delay handled by DelayNode
-    const delaySec = Math.max(0, (localStartMs - nowGlobalMs) / 1000);
+    const delaySec = Math.max(0, (globalStartTimeMs - nowGlobalMs) / 1000);
     const when = this.ctx.currentTime + delaySec;
 
-    log(this.debugEl, `Scheduling start in ${Math.max(0, delaySec*1000).toFixed(0)}ms (offset=${offsetMs.toFixed(0)}ms)`);
+    log(this.debugEl, `Scheduling start in ${Math.max(0, delaySec*1000)|0}ms`);
     src.start(when);
 
     this.current = { buffer, src, fileId, startedAtGlobal: globalStartTimeMs, scheduledAtLocal: when };
     return when;
   }
 
-  // No-op: we don't adjust playbackRate anymore
-  applyGentleCorrection(_errMs) {}
+  applyGentleCorrection(_) {}
 }
