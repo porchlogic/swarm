@@ -8,12 +8,14 @@
   <link rel="stylesheet" href="./style.css" />
   <!-- WebTorrent for P2P file sharing (browser) -->
   <script src="https://cdn.jsdelivr.net/npm/webtorrent@latest/webtorrent.min.js"></script>
+  
+  <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
 </head>
 
 <body>
   <div id="app">
     <header>
-      <button id="leaveBtn" class="leaveBtn hidden" disabled>Leave</button>
+      <button id="leaveBtn" class="leaveBtn hidden" disabled>←</button>
       <h1 id="swarmTitle">Audio Swarm</h1>
       <div id="statusContainer" class="status hidden">
         <span id="connStatus">disconnected</span> •
@@ -24,6 +26,15 @@
       <div id="errorBanner" class="hidden"
         style="margin-top:8px;padding:8px;border:1px solid #703; background:#300; color:#fbb; border-radius:8px;">
       </div>
+      <!-- QR button (shown after joining a swarm) -->
+      <!-- <button id="qrBtn" class="qrBtn hidden" aria-label="Show join QR" title="Show QR"></button> -->
+      <button id="qrBtn" class="qrBtn hidden" aria-label="Show join QR" title="Show QR">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
+          <path
+            d="M3 3h8v8H3V3zm2 2v4h4V5H5zm6 0h2v2h-2V5zm0 4h2v2h-2V9zm0 4h2v2h-2v-2zm0 4h2v2h-2v-2zM3 13h8v8H3v-8zm2 2v4h4v-4H5zm12-12h8v8h-8V3zm2 2v4h4V5h-4zm-2 10h2v2h-2v-2zm4 0h4v2h-4v-2zm-4 4h2v4h-2v-4zm4 0h4v4h-4v-4z" />
+        </svg>
+      </button>
+
     </header>
 
     <section id="joinSection">
@@ -89,6 +100,18 @@
   </div>
 
   <script type="module" src="./app.js"></script>
+
+  <!-- Full-screen QR overlay -->
+  <div id="qrOverlay" class="hidden" style="
+    position:fixed; inset:0; background:#000; display:flex; align-items:center; justify-content:center; z-index:9999;">
+    <div style="position:absolute; top:12px; right:12px;">
+      <button id="qrCloseBtn" aria-label="Close QR"
+        style="
+        font-size:20px; padding:8px 12px; border-radius:10px; border:1px solid #444; background:#111; color:#fff;">Close</button>
+    </div>
+    <canvas id="qrCanvas" style="width:min(92vw,92vh); height:min(92vw,92vh);"></canvas>
+  </div>
+
 </body>
 
 </html>

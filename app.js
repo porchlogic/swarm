@@ -36,13 +36,21 @@ let swarm = null;
 let playback = null;
 let offset = null;
 
+let qrBtn;
+let qrOverlay;
+let qrCanvas;
+let qrCloseBtn;
+
+
 let state = {
   swarmHash: null,
   userId: nanoid(),
   directorFileId: null,
   localChoiceId: null,
   playing: false,
-  globalStartTimeMs: null
+  globalStartTimeMs: null,
+  swarmName: null,
+  secretRequired: false, // whether creator used a secret; controls QR lock flag
 };
 
 const LS_KEYS = {
@@ -108,6 +116,16 @@ class Catalog {
 }
 
 let catalog = new Catalog();
+
+function buildSwarmUrl({ name, locked }) {
+  const url = new URL(location.href);
+  url.searchParams.delete("ws"); // keep QR clean; advanced users can add ?ws=... manually
+  url.searchParams.set("swarm", name);
+  if (locked) url.searchParams.set("locked", "1"); else url.searchParams.delete("locked");
+  return url.origin + url.pathname + "?" + url.searchParams.toString();
+}
+
+
 
 function loadSpeakerDelay(swarmHash) {
   const spk = parseInt(localStorage.getItem(LS_KEYS.speakerDelay(swarmHash)), 10);
@@ -245,15 +263,22 @@ function stopFromMessage() {
 
 // Join flow
 async function join() {
-  const name = swarmNameEl.value.trim();
-  const secret = swarmSecretEl.value.trim();
-  if (!name || !secret) {
-    alert("Please enter a swarm name and secret key.");
+  const name = (swarmNameEl.value || "").trim();
+  const secret = (swarmSecretEl.value || "").trim();
+
+  if (!name) {
+    alert("Please enter a swarm name.");
     return;
   }
-  const composite = `${name}:${secret}`;
+
+  state.swarmName = name;
+  state.secretRequired = secret.length > 0;
+
+  // Hash rule: if secret provided, hash(name:secret); otherwise hash(name)
+  const composite = secret ? `${name}:${secret}` : name;
   state.swarmHash = await sha256Hex(composite);
-  log(debugEl, `swarmHash: ${state.swarmHash} (from ${name}:****)`);
+  log(debugEl, `swarmHash: ${state.swarmHash} (from ${name}${secret ? ":+secret" : ""})`);
+
 
   offset = new OffsetEstimator();
 
@@ -293,6 +318,7 @@ async function join() {
   setHidden("playSection", false);          // ← show play footer after join
   setHidden("controlsSheet", false);        // ← show controls panel (closed) after join
   setHidden("controlsOverlay", true);       // keep overlay hidden until panel opens
+  setHidden("qrBtn", false);
 
   setDisabled("leaveBtn", false);
   setDisabled("joinBtn", true);
@@ -572,6 +598,12 @@ window.addEventListener("DOMContentLoaded", () => {
   controlsSheet = byId("controlsSheet");
   takeoverBtn = byId("takeoverBtn");
 
+  qrBtn = byId("qrBtn");
+  qrOverlay = byId("qrOverlay");
+  qrCanvas = byId("qrCanvas");
+  qrCloseBtn = byId("qrCloseBtn");
+
+
   joinBtn.onclick = async () => {
     try { await join(); }
     catch (err) {
@@ -634,7 +666,11 @@ window.addEventListener("DOMContentLoaded", () => {
   }
 
   function openControlsSheet() {
-    if (controlsOverlay) controlsOverlay.classList.add("open");
+    // if (controlsOverlay) controlsOverlay.classList.add("open");
+    if (controlsOverlay) {
+      controlsOverlay.classList.remove("hidden");  // show overlay
+      controlsOverlay.classList.add("open");
+    }
     if (controlsSheet) {
       controlsSheet.classList.add("open");
       controlsSheet.setAttribute("aria-hidden", "false");
@@ -644,7 +680,11 @@ window.addEventListener("DOMContentLoaded", () => {
   }
 
   function closeControlsSheet() {
-    if (controlsOverlay) controlsOverlay.classList.remove("open");
+    // if (controlsOverlay) controlsOverlay.classList.remove("open");
+    if (controlsOverlay) {
+      controlsOverlay.classList.remove("open");
+      controlsOverlay.classList.add("hidden");     // hide overlay again
+    }
     if (controlsSheet) {
       controlsSheet.classList.remove("open");
       controlsSheet.setAttribute("aria-hidden", "true");
@@ -657,6 +697,69 @@ window.addEventListener("DOMContentLoaded", () => {
     const isOpen = controlsSheet && controlsSheet.classList.contains("open");
     if (isOpen) closeControlsSheet(); else openControlsSheet();
   }
+
+  function openQrOverlay() {
+    if (!state.swarmName) return;
+    const shareUrl = buildSwarmUrl({ name: state.swarmName, locked: state.secretRequired });
+    const size = Math.min(window.innerWidth, window.innerHeight) * 0.92;
+    // Draw QR
+    QRCode.toCanvas(qrCanvas, shareUrl, { width: Math.floor(size), margin: 1 }, (err) => {
+      if (err) console.error("QR render error:", err);
+      qrOverlay.classList.remove("hidden");
+    });
+  }
+  function closeQrOverlay() {
+    qrOverlay.classList.add("hidden");
+  }
+
+  if (qrBtn) qrBtn.onclick = openQrOverlay;
+  if (qrCloseBtn) qrCloseBtn.onclick = closeQrOverlay;
+  // Click outside to close
+  if (qrOverlay) {
+    qrOverlay.addEventListener("click", (e) => {
+      if (e.target === qrOverlay) closeQrOverlay();
+    });
+  }
+
+
+  function closeQrOverlay() {
+    qrOverlay.classList.add("hidden");
+  }
+  // ---- Deep-linking: ?swarm=<name>[&locked=1] ----
+  (function handleDeepLink() {
+    const sp = new URLSearchParams(location.search);
+    const dlName = (sp.get("swarm") || "").trim();
+    const dlLocked = sp.get("locked") === "1";
+
+    if (dlName) {
+      // Pre-fill
+      swarmNameEl.value = dlName;
+      setText("swarmTitle", dlName);
+
+      if (dlLocked) {
+        // Enforce secret entry before join
+        // (UI gate only; the correct secret still determines the hash)
+        swarmSecretEl.placeholder = "secret key required to join";
+        swarmSecretEl.focus();
+        // Don't auto-join; user must supply secret
+      } else {
+        // No lock: auto-join with empty secret
+        // (If the creator used a secret, this will be a different swarm hash)
+        joinBtn.click();
+      }
+    }
+  })();
+
+
+  if (qrBtn) qrBtn.onclick = openQrOverlay;
+  if (qrCloseBtn) qrCloseBtn.onclick = closeQrOverlay;
+  // Click outside to close
+  if (qrOverlay) {
+    qrOverlay.addEventListener("click", (e) => {
+      if (e.target === qrOverlay) closeQrOverlay();
+    });
+  }
+
 
   const controlsHeader = document.getElementById("controlsHeader");
   if (controlsHeader) {

@@ -55,10 +55,32 @@ header {
   padding: 10px 12px 0 12px;
   text-align: center;
 }
+.qrBtn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #fff;
+  /* inherit text color, tweak as needed */
+  padding: 6px;
+  border-radius: 6px;
+  transition: background 0.2s;
+}
 
+.qrBtn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.qrBtn svg {
+  display: block;
+  width: 32px;
+  height: 32px;
+}
 header h1 {
   margin: 0;
-  font-size: 20px;
+  font-size: 30px;
   font-weight: 700;
   line-height: 1.2;
 }
@@ -66,13 +88,12 @@ header h1 {
 /* Leave button always top-left */
 .leaveBtn {
   position: absolute;
-  top: 8px;
+  top: 12px;
   left: 12px;
-  background: #2a2a2a;
-  border: 1px solid #3a3a3a;
+  background: #2a2a2a0c;
+  border: none;
   padding: 6px 10px;
-  border-radius: 8px;
-  font-size: 12px;
+  font-size: 22px;
 }
 
 .status {
@@ -86,12 +107,16 @@ header h1 {
   /* intentionally empty to override older rules */
 }
 
+#screenFiles {
+  margin-top:20px;
+}
+
 section {
   margin: 18px 0;
   padding: 12px;
-  border: 1px solid #222;
-  border-radius: 12px;
-  background: #121212;
+  /* border: 1px solid #222; */
+  /* border-radius: 12px; */
+  /* background: #1212121c; */
 }
 
 section h2 {
