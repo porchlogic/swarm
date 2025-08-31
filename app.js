@@ -46,10 +46,16 @@ let state = {
 };
 
 const LS_KEYS = {
-  baseOffset: (swarmHash) => `swarm_base_offset_${swarmHash}`,
-  baseOffsetTs: (swarmHash) => `swarm_base_offset_ts_${swarmHash}`,
-  speakerDelay: (swarmHash) => `swarm_speaker_delay_${swarmHash}`
+  speakerDelay: (swarmHash) => `swarm_speaker_delay_${swarmHash}`,
 };
+
+function loadSpeakerDelay(swarmHash) {
+  const spk = parseInt(localStorage.getItem(LS_KEYS.speakerDelay(swarmHash)), 10);
+  return Number.isFinite(spk) ? spk : 0;
+}
+function saveSpeakerDelay(swarmHash, ms) {
+  localStorage.setItem(LS_KEYS.speakerDelay(swarmHash), String(ms | 0));
+}
 
 function loadPersisted(swarmHash) {
   const off = parseFloat(localStorage.getItem(LS_KEYS.baseOffset(swarmHash)));
@@ -65,9 +71,9 @@ function saveBaseOffset(swarmHash, ms) {
   localStorage.setItem(LS_KEYS.baseOffset(swarmHash), String(ms | 0));
   localStorage.setItem(LS_KEYS.baseOffsetTs(swarmHash), String(Date.now()));
 }
-function saveSpeakerDelay(swarmHash, ms) {
-  localStorage.setItem(LS_KEYS.speakerDelay(swarmHash), String(ms | 0));
-}
+// function saveSpeakerDelay(swarmHash, ms) {
+//   localStorage.setItem(LS_KEYS.speakerDelay(swarmHash), String(ms | 0));
+// }
 
 // Global time = Date.now() + baseOffset
 function getGlobalNow() {
@@ -190,11 +196,15 @@ async function join() {
   log(debugEl, `swarmHash: ${state.swarmHash} (from ${name}:****)`);
 
   offset = new OffsetEstimator();
-  const persisted = loadPersisted(state.swarmHash);
+
+  // Re-anchor epoch base for monotonic mapping each join
+  // epochAtPerf0 = Date.now();
 
   playback = new Playback({ debugEl });
   playback.setGlobalNowProvider(() => getGlobalNow());
-  const initialDelay = Number.isFinite(persisted.speakerDelayMs) ? persisted.speakerDelayMs : 0;
+
+  const initialDelay = loadSpeakerDelay(state.swarmHash);
+
   if (initialDelay >= 0) {
     playback.setSpeakerDelay(initialDelay);
     playback.setScheduleAdjust(0);
@@ -254,8 +264,17 @@ async function join() {
   control.on("timePong", (m) => {
     const t1 = Date.now();
     offset.addSample(m.t0, m.tS, t1);
+
+    // Lock once we have enough good samples; no cached reuse
+    if (!offset.baseLocked) {
+      offset.lockBase();
+      log(debugEl, `Locked baseOffset: ${offset.baseOffsetMs | 0}ms`);
+      updatePlaybackButtons();
+    }
+
     updateTopBar();
   });
+
 
   // Files
   swarm = new SwarmFiles({ debugEl });
@@ -287,21 +306,21 @@ async function join() {
 
   try { await playback.ensureCtx(); } catch { }
 
-  // Lock base offset quickly & deterministically
-  if (persisted.baseOffsetMs !== null) {
-    offset.baseLocked = true;
-    offset.baseOffsetMs = persisted.baseOffsetMs;
-    log(debugEl, `Using persisted baseOffset: ${offset.baseOffsetMs | 0}ms`);
-  } else {
-    setTimeout(() => {
-      if (!offset.baseLocked) {
-        offset.lockBase();
-        saveBaseOffset(state.swarmHash, offset.baseOffsetMs);
-        log(debugEl, `Locked baseOffset: ${offset.baseOffsetMs | 0}ms`);
-      }
-      updatePlaybackButtons();
-    }, 1200);
-  }
+  // // Lock base offset quickly & deterministically
+  // if (persisted.baseOffsetMs !== null) {
+  //   offset.baseLocked = true;
+  //   offset.baseOffsetMs = persisted.baseOffsetMs;
+  //   log(debugEl, `Using persisted baseOffset: ${offset.baseOffsetMs | 0}ms`);
+  // } else {
+  //   setTimeout(() => {
+  //     if (!offset.baseLocked) {
+  //       offset.lockBase();
+  //       saveBaseOffset(state.swarmHash, offset.baseOffsetMs);
+  //       log(debugEl, `Locked baseOffset: ${offset.baseOffsetMs | 0}ms`);
+  //     }
+  //     updatePlaybackButtons();
+  //   }, 1200);
+  // }
 
   renderFiles();
   updatePlaybackButtons();
