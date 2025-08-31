@@ -1,7 +1,6 @@
-
-// app.js — use a single base offset everywhere; gate play until locked; re-announce files on join
+// app.js — role-sticky director; body-wide glow; takeover button; dual selection highlights
 import { sha256Hex, nanoid, log } from "./modules/util.js";
-import { OffsetEstimator } from "./modules/timing.js"; // from earlier version or patch5 if applied
+import { OffsetEstimator } from "./modules/timing.js";
 import { ControlChannel } from "./modules/control.js";
 import { SwarmFiles } from "./modules/swarm.js";
 import { Playback } from "./modules/playback.js";
@@ -22,7 +21,6 @@ let fileInput;
 let fileListEl;
 let primaryPlayBtn;
 let primaryPlayIcon;
-let toggleControlsBtn;
 let currentFileLabel;
 let delaySlider;
 let delayVal;
@@ -30,8 +28,7 @@ let delayIncBtn;
 let delayDecBtn;
 let controlsOverlay;
 let controlsSheet;
-let toggleOriginalParent;
-let toggleOriginalNextSibling;
+let takeoverBtn;
 
 let control = null;
 let director = null;
@@ -42,7 +39,8 @@ let offset = null;
 let state = {
   swarmHash: null,
   userId: nanoid(),
-  currentFileId: null,
+  directorFileId: null,
+  localChoiceId: null,
   playing: false,
   globalStartTimeMs: null
 };
@@ -55,7 +53,7 @@ const LS_KEYS = {
 
 function loadPersisted(swarmHash) {
   const off = parseFloat(localStorage.getItem(LS_KEYS.baseOffset(swarmHash)));
-  const ts  = parseInt(localStorage.getItem(LS_KEYS.baseOffsetTs(swarmHash)), 10);
+  const ts = parseInt(localStorage.getItem(LS_KEYS.baseOffsetTs(swarmHash)), 10);
   const spk = parseInt(localStorage.getItem(LS_KEYS.speakerDelay(swarmHash)), 10);
   return {
     baseOffsetMs: Number.isFinite(off) ? off : null,
@@ -64,11 +62,11 @@ function loadPersisted(swarmHash) {
   };
 }
 function saveBaseOffset(swarmHash, ms) {
-  localStorage.setItem(LS_KEYS.baseOffset(swarmHash), String(ms|0));
+  localStorage.setItem(LS_KEYS.baseOffset(swarmHash), String(ms | 0));
   localStorage.setItem(LS_KEYS.baseOffsetTs(swarmHash), String(Date.now()));
 }
 function saveSpeakerDelay(swarmHash, ms) {
-  localStorage.setItem(LS_KEYS.speakerDelay(swarmHash), String(ms|0));
+  localStorage.setItem(LS_KEYS.speakerDelay(swarmHash), String(ms | 0));
 }
 
 // Global time = Date.now() + baseOffset
@@ -79,55 +77,80 @@ function getGlobalNow() {
 function renderFiles() {
   fileListEl.innerHTML = "";
   const files = swarm ? swarm.getAll() : [];
+  const isDirector = !!director?.isDirector;
+  const dirId = state.directorFileId;
+  const localId = state.localChoiceId;
+
   for (const f of files) {
     fileListEl.appendChild(fileRow({
       file: f,
-      selected: state.currentFileId === f.fileId,
+      selectedDirector: f.fileId === dirId,
+      selectedLocal: !isDirector && f.fileId === localId && localId !== dirId,
       onSelectToggle: (fileId) => {
-        state.currentFileId = fileId;
-        currentFileLabel.textContent = `Selected: ${f.name}`;
-        if (director?.isDirector) control.send("selectFile", { fileId });
+        if (director?.isDirector) {
+          state.directorFileId = fileId;
+          state.localChoiceId = fileId;
+          const meta = swarm.getMeta(fileId);
+          currentFileLabel.textContent = meta ? `Selected: ${meta.name}` : `Selected: ${fileId}`;
+          control.send("selectFile", { fileId });
+
+          if (meta?.ready) playback.ensureDecoded(fileId, meta.blobUrl).catch(() => { });
+          updatePlaybackButtons();
+          renderFiles();
+          return;
+        }
+
+        state.localChoiceId = fileId;
+        const meta = swarm.getMeta(fileId);
+        if (meta?.ready) playback.ensureDecoded(fileId, meta.blobUrl).catch(() => { });
         updatePlaybackButtons();
-        if (f.ready) playback.ensureDecoded(fileId, f.blobUrl).catch(()=>{});
         renderFiles();
       }
     }));
   }
-  // "+" add file row at the end
-  fileListEl.appendChild(plusRow({
-    onAdd: () => fileInput?.click?.()
-  }));
+
+  fileListEl.appendChild(plusRow({ onAdd: () => fileInput?.click?.() }));
 }
 
 function updatePlaybackButtons() {
-  const hasFile = !!(state.currentFileId && swarm?.getMeta(state.currentFileId)?.ready);
+  const dirFile = state.directorFileId;
+  const hasFile = !!(dirFile && swarm?.getMeta(dirFile)?.ready);
   const canControl = !!director?.isDirector && !!offset?.baseLocked;
   const playing = !!state.playing;
 
-  // Enable main button only if director and a file is ready
-  const enable = canControl && hasFile;
-  setDisabled("primaryPlayBtn", !enable);
+  setDisabled("primaryPlayBtn", !(canControl && hasFile));
 
-  // Icon: ▶ when not playing, ■ when playing
   const iconEl = byId("primaryPlayIcon");
   if (iconEl) iconEl.textContent = playing ? "■" : "▶";
 }
 
+function updateRoleGlowAndTakeover() {
+  const body = document.body;
+  body.classList.remove("role-director", "role-peer");
+  if (director?.isDirector) body.classList.add("role-director");
+  else body.classList.add("role-peer");
+
+  const vacancy = !director?.currentDirectorId;
+  setHidden("takeoverBtn", !(vacancy && !director?.isDirector));
+}
+
 function updateTopBar() {
-  setText("directorStatus", `director: ${director?.isDirector ? "you" : (director?.currentDirectorId || "?")}`);
+  setText("directorStatus", `director: ${director?.isDirector ? "you" : (director?.currentDirectorId || "—")}`);
   setText("swarmPeers", `peers: ${director?.peers?.length || 0}`);
   const off = offset?.baseOffsetMs ?? 0;
-  setText("clockStatus", `offset(base): ${off|0}ms`);
+  setText("clockStatus", `offset(base): ${off | 0}ms`);
+  updateRoleGlowAndTakeover();
 }
 
 async function playFromMessage(m) {
   if (!offset?.baseLocked) {
     log(debugEl, "Play arrived but baseOffset not locked yet; waiting...");
-    // wait briefly for lock (up to 1s)
     const t0 = Date.now();
-    while (!offset.baseLocked && Date.now()-t0 < 1000) await new Promise(r=>setTimeout(r,50));
+    while (!offset.baseLocked && Date.now() - t0 < 1000) await new Promise(r => setTimeout(r, 50));
   }
-  if (!state.currentFileId) state.currentFileId = m.fileId;
+
+  state.directorFileId = m.fileId;
+
   const meta = swarm.getMeta(m.fileId);
   if (!meta || !meta.ready) {
     currentFileLabel.textContent = "Fetching file...";
@@ -137,18 +160,21 @@ async function playFromMessage(m) {
       await new Promise(r => setTimeout(r, 200));
     }
   }
+
   const buf = await playback.ensureDecoded(m.fileId, swarm.getMeta(m.fileId).blobUrl);
   state.globalStartTimeMs = m.globalStartTimeMs;
   await playback.ensureCtx();
   playback.start({ buffer: buf, fileId: m.fileId, globalStartTimeMs: m.globalStartTimeMs });
   state.playing = true;
   updatePlaybackButtons();
+  renderFiles();
 }
 
 function stopFromMessage() {
   playback.stop();
   state.playing = false;
   updatePlaybackButtons();
+  renderFiles();
 }
 
 // Join flow
@@ -163,7 +189,7 @@ async function join() {
   state.swarmHash = await sha256Hex(composite);
   log(debugEl, `swarmHash: ${state.swarmHash} (from ${name}:****)`);
 
-  offset = new OffsetEstimator(); // robust version if you applied patch5; otherwise existing works
+  offset = new OffsetEstimator();
   const persisted = loadPersisted(state.swarmHash);
 
   playback = new Playback({ debugEl });
@@ -177,36 +203,44 @@ async function join() {
     playback.setScheduleAdjust(initialDelay);
   }
   if (delaySlider) delaySlider.value = String(initialDelay);
-  if (delayVal) delayVal.textContent = `${initialDelay|0} ms`;
+  if (delayVal) delayVal.textContent = `${initialDelay | 0} ms`;
 
-  // const urlParamWS = new URLSearchParams(location.search).get("ws");
-  // const ctrlUrl = urlParamWS || `${location.protocol}//${location.host}`;
-  const DEFAULT_WS = "wss://ws.porchlogic.com"; // your droplet's WS endpoint
+  const DEFAULT_WS = "wss://ws.porchlogic.com";
   const urlParamWS = new URLSearchParams(location.search).get("ws");
-  const storedWS = localStorage.getItem("ws_override"); // optional user override
+  const storedWS = localStorage.getItem("ws_override");
   const ctrlUrl = urlParamWS || storedWS || DEFAULT_WS;
 
   control = new ControlChannel({ url: ctrlUrl, swarmHash: state.swarmHash, userId: state.userId, debugEl });
   await control.connect();
   connStatus.textContent = "connected";
+
+  // Show/Hide sections based on joined state
   setHidden("statusContainer", false);
   setHidden("screenFiles", false);
-  // hide the join UI once we've successfully joined and surface a persistent leave button
   setHidden("joinSection", true);
   setHidden("leaveBtn", false);
   setHidden("errorBanner", true);
+  setHidden("playSection", false);          // ← show play footer after join
+  setHidden("controlsSheet", false);        // ← show controls panel (closed) after join
+  setHidden("controlsOverlay", true);       // keep overlay hidden until panel opens
+
   setDisabled("leaveBtn", false);
   setDisabled("joinBtn", true);
-  // Update header to show swarm name
   setText("swarmTitle", name);
 
   control.startClockPings(5);
   director = new Director({ control, debugEl });
 
-  control.on("joined", (m) => { director.updatePeers(m.peers || []); updateTopBar(); });
-  control.on("peers",  (m) => { director.updatePeers(m.peers || []); updateTopBar(); });
+  // Presence & peers
+  control.on("joined", (m) => { director.updatePeers(m.peers || []); director.assertInitialIfAlone(); updateTopBar(); });
+  control.on("peers", (m) => { director.updatePeers(m.peers || []); updateTopBar(); });
 
-  // Re-announce local files when a peer joins (so refreshed peers repopulate)
+  // Director control messages
+  control.on("director:assert", (m) => { director.setDirector(m.userId || null); updateTopBar(); });
+  control.on("director:take", (m) => { director.setDirector(m.userId || null); updateTopBar(); });
+  control.on("director:resign", (_) => { director.setDirector(null); updateTopBar(); });
+
+  // Re-announce local files when a peer joins
   control.on("presence", (m) => {
     if (m.action === "join") {
       const locals = swarm.getLocalMetas?.() || [];
@@ -216,27 +250,30 @@ async function join() {
     }
   });
 
+  // Clock pongs
   control.on("timePong", (m) => {
     const t1 = Date.now();
     offset.addSample(m.t0, m.tS, t1);
     updateTopBar();
   });
 
+  // Files
   swarm = new SwarmFiles({ debugEl });
 
   control.on("file:announce", async (m) => {
     if (swarm.hasFile(m.fileId)) return;
-    await swarm.ensureRemote(m, () => {});
+    await swarm.ensureRemote(m, () => { });
     renderFiles();
     updatePlaybackButtons();
   });
 
   control.on("selectFile", (m) => {
-    state.currentFileId = m.fileId;
+    state.directorFileId = m.fileId;
     const meta = swarm.getMeta(m.fileId);
     currentFileLabel.textContent = meta ? `Selected: ${meta.name}` : `Selected: ${m.fileId}`;
     updatePlaybackButtons();
-    if (meta?.ready) playback.ensureDecoded(m.fileId, meta.blobUrl).catch(()=>{});
+    if (meta?.ready) playback.ensureDecoded(m.fileId, meta.blobUrl).catch(() => { });
+    renderFiles();
   });
 
   control.on("play", async (m) => { await playFromMessage(m); });
@@ -248,21 +285,19 @@ async function join() {
     setDisabled("joinBtn", false);
   });
 
-  try { await playback.ensureCtx(); } catch {}
+  try { await playback.ensureCtx(); } catch { }
 
-  // Lock base offset quickly & deterministically:
-  //  - If we have a persisted value, reuse it immediately.
-  //  - Else, after ~1.2s of preroll, lock whatever estimate we have (even large).
+  // Lock base offset quickly & deterministically
   if (persisted.baseOffsetMs !== null) {
     offset.baseLocked = true;
     offset.baseOffsetMs = persisted.baseOffsetMs;
-    log(debugEl, `Using persisted baseOffset: ${offset.baseOffsetMs|0}ms`);
+    log(debugEl, `Using persisted baseOffset: ${offset.baseOffsetMs | 0}ms`);
   } else {
     setTimeout(() => {
       if (!offset.baseLocked) {
         offset.lockBase();
         saveBaseOffset(state.swarmHash, offset.baseOffsetMs);
-        log(debugEl, `Locked baseOffset: ${offset.baseOffsetMs|0}ms`);
+        log(debugEl, `Locked baseOffset: ${offset.baseOffsetMs | 0}ms`);
       }
       updatePlaybackButtons();
     }, 1200);
@@ -283,7 +318,6 @@ window.addEventListener("DOMContentLoaded", () => {
   fileListEl = byId("fileList");
   primaryPlayBtn = byId("primaryPlayBtn");
   primaryPlayIcon = byId("primaryPlayIcon");
-  toggleControlsBtn = byId("toggleControlsBtn");
   currentFileLabel = byId("currentFileLabel");
   delaySlider = byId("delaySlider");
   delayVal = byId("delayVal");
@@ -291,10 +325,7 @@ window.addEventListener("DOMContentLoaded", () => {
   delayDecBtn = byId("delayDecBtn");
   controlsOverlay = byId("controlsOverlay");
   controlsSheet = byId("controlsSheet");
-
-  // Remember where the toggle lives so we can move it into the sheet while it's open
-  toggleOriginalParent = toggleControlsBtn?.parentNode || null;
-  toggleOriginalNextSibling = toggleControlsBtn?.nextSibling || null;
+  takeoverBtn = byId("takeoverBtn");
 
   joinBtn.onclick = async () => {
     try { await join(); }
@@ -316,122 +347,86 @@ window.addEventListener("DOMContentLoaded", () => {
   };
 
   primaryPlayBtn.onclick = async () => {
-    if (!director?.isDirector || !state.currentFileId || !offset?.baseLocked) return;
+    if (!director?.isDirector || !state.directorFileId || !offset?.baseLocked) return;
     if (state.playing) {
       control.send("stop", {});
       stopFromMessage();
       return;
     }
-    const meta = swarm.getMeta(state.currentFileId);
-    const isCached = playback._cache?.has?.(state.currentFileId);
+    const meta = swarm.getMeta(state.directorFileId);
+    const isCached = playback._cache?.has?.(state.directorFileId);
     const startInMs = isCached ? 1200 : 2600;
 
-    // Ensure buffer is ready before we pick a start time
-    await playback.ensureDecoded(state.currentFileId, meta.blobUrl);
+    await playback.ensureDecoded(state.directorFileId, meta.blobUrl);
 
     const globalStartTimeMs = getGlobalNow() + startInMs;
-    const m = { fileId: state.currentFileId, globalStartTimeMs };
+    const m = { fileId: state.directorFileId, globalStartTimeMs };
     control.send("play", m);
     await playFromMessage(m);
   };
 
-  // Wire delay controls (slider + inc/dec) found within `root` (Element or Document).
-  // Uses a data attribute to avoid attaching duplicate listeners.
-  function wireDelayControls(root) {
-    try {
-      const r = root || document;
-      const sDelaySlider = (r.querySelector ? r.querySelector("#delaySlider") : null);
-      const sDelayVal = (r.querySelector ? r.querySelector("#delayVal") : null);
-      const sInc = (r.querySelector ? r.querySelector("#delayIncBtn") : null);
-      const sDec = (r.querySelector ? r.querySelector("#delayDecBtn") : null);
-
-      // Update global refs so other code can read them
-      if (sDelaySlider) delaySlider = sDelaySlider;
-      if (sDelayVal) delayVal = sDelayVal;
-      if (sInc) delayIncBtn = sInc;
-      if (sDec) delayDecBtn = sDec;
-
-      // Helper to attach a listener only once
-      const attachOnce = (el, ev, fn) => {
-        if (!el) return;
-        const key = `wired_${ev}`;
-        if (el.dataset && el.dataset[key]) return;
-        el.addEventListener(ev, fn);
-        if (el.dataset) el.dataset[key] = "1";
-      };
-
-      attachOnce(sDelaySlider, "input", () => {
-        const v = parseInt(sDelaySlider.value, 10) || 0;
-        applyDelayValue(v);
-      });
-      attachOnce(sInc, "click", () => {
-        const v = (parseInt((sDelaySlider && sDelaySlider.value) || "0", 10) || 0) + 10;
-        applyDelayValue(v);
-      });
-      attachOnce(sDec, "click", () => {
-        const v = (parseInt((sDelaySlider && sDelaySlider.value) || "0", 10) || 0) - 10;
-        applyDelayValue(v);
-      });
-    } catch (e) { /* defensive */ }
+  // ---- Controls drawer wiring: click the sheet's top header to open/close ----
+  function setHeaderExpanded(isOpen) {
+    const header = document.getElementById("controlsHeader");
+    if (header) {
+      header.setAttribute("aria-expanded", isOpen ? "true" : "false");
+      header.setAttribute("aria-label", isOpen ? "Close controls" : "Open controls");
+    }
+    if (controlsSheet) controlsSheet.setAttribute("aria-hidden", isOpen ? "false" : "true");
   }
 
-  const openControlsSheet = () => {
+  function openControlsSheet() {
     if (controlsOverlay) controlsOverlay.classList.add("open");
     if (controlsSheet) {
       controlsSheet.classList.add("open");
       controlsSheet.setAttribute("aria-hidden", "false");
-      // Move the floating toggle into the sheet so it appears at the top of the panel (after the handle)
-      try {
-        if (toggleControlsBtn && toggleOriginalParent && !controlsSheet.contains(toggleControlsBtn)) {
-          const container = controlsSheet.querySelector(".controlsContainer");
-          // insert after the handle and before the controls container
-          if (container) controlsSheet.insertBefore(toggleControlsBtn, container);
-          else controlsSheet.insertBefore(toggleControlsBtn, controlsSheet.firstChild);
-          toggleControlsBtn.classList.add("in-sheet");
-        }
-      } catch (e) { /* defensive */ }
-
-      // Wire controls inside the sheet (safe to call repeatedly)
-      wireDelayControls(controlsSheet);
+      try { wireDelayControls(controlsSheet); } catch { }
     }
-  };
-  const closeControlsSheet = () => {
+    setHeaderExpanded(true);
+  }
+
+  function closeControlsSheet() {
     if (controlsOverlay) controlsOverlay.classList.remove("open");
     if (controlsSheet) {
       controlsSheet.classList.remove("open");
       controlsSheet.setAttribute("aria-hidden", "true");
-      // Restore the toggle back to its original place in the file list screen
-      try {
-        if (toggleControlsBtn && toggleOriginalParent && controlsSheet.contains(toggleControlsBtn)) {
-          if (toggleOriginalNextSibling) toggleOriginalParent.insertBefore(toggleControlsBtn, toggleOriginalNextSibling);
-          else toggleOriginalParent.appendChild(toggleControlsBtn);
-          toggleControlsBtn.classList.remove("in-sheet");
-        }
-      } catch (e) { /* defensive */ }
-
-      // After closing, re-wire controls from the main document area (keeps globals pointing at visible elements)
-      wireDelayControls(document);
+      try { wireDelayControls(document); } catch { }
     }
-  };
-
-  if (toggleControlsBtn) {
-    toggleControlsBtn.onclick = () => {
-      if (controlsSheet && controlsSheet.classList.contains("open")) closeControlsSheet();
-      else openControlsSheet();
-    };
+    setHeaderExpanded(false);
   }
-  if (controlsOverlay) {
-    controlsOverlay.onclick = () => closeControlsSheet();
+
+  function toggleSheet() {
+    const isOpen = controlsSheet && controlsSheet.classList.contains("open");
+    if (isOpen) closeControlsSheet(); else openControlsSheet();
   }
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") closeControlsSheet();
-  });
 
-  // Wire delay controls for the currently visible DOM (safe to call multiple times)
-  try { wireDelayControls(document); } catch (e) { /* defensive */ }
+  const controlsHeader = document.getElementById("controlsHeader");
+  if (controlsHeader) {
+    controlsHeader.addEventListener("click", toggleSheet);
+    controlsHeader.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleSheet(); }
+    });
+  }
 
+  if (controlsSheet) {
+    controlsSheet.addEventListener("click", (e) => {
+      const interactive = e.target.closest("input,button,select,textarea,details,summary,.nudgeBtn,.delaySlider");
+      if (interactive) return;
+      const bounds = controlsSheet.getBoundingClientRect();
+      const topZone = e.clientY - bounds.top;
+      if (topZone >= 0 && topZone <= 56) toggleSheet();
+    });
+  }
+
+  if (controlsOverlay) controlsOverlay.onclick = () => closeControlsSheet();
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeControlsSheet(); });
+
+  // Initialize ARIA state for a closed (and initially hidden) sheet
+  setHeaderExpanded(false);
+
+  // Delay control helpers
   const applyDelayValue = (v) => {
-    v = Math.max(-2500, Math.min(2500, v|0));
+    v = Math.max(-2500, Math.min(2500, v | 0));
     if (delayVal) delayVal.textContent = `${v} ms`;
     if (playback) {
       if (v >= 0) {
@@ -446,24 +441,20 @@ window.addEventListener("DOMContentLoaded", () => {
     if (state.swarmHash) saveSpeakerDelay(state.swarmHash, v);
   };
 
-  if (delaySlider) {
-    delaySlider.oninput = () => {
-      const v = parseInt(delaySlider.value, 10) || 0;
-      applyDelayValue(v);
-    };
-  }
-  if (delayIncBtn) {
-    delayIncBtn.onclick = () => {
-      const v = (parseInt(delaySlider.value, 10) || 0) + 10;
-      applyDelayValue(v);
-    };
-  }
-  if (delayDecBtn) {
-    delayDecBtn.onclick = () => {
-      const v = (parseInt(delaySlider.value, 10) || 0) - 10;
-      applyDelayValue(v);
-    };
-  }
+  // Wire initial visible controls (safe before join)
+  try {
+    if (delayIncBtn) delayIncBtn.onclick = () => applyDelayValue((parseInt(delaySlider.value, 10) || 0) + 5);
+    if (delayDecBtn) delayDecBtn.onclick = () => applyDelayValue((parseInt(delaySlider.value, 10) || 0) - 5);
+    if (delaySlider) delaySlider.oninput = (e) => applyDelayValue(parseInt(e.target.value, 10) || 0);
+  } catch (_) { }
 
-  // Director role controls removed from simplified UI
+  // Takeover button
+  if (takeoverBtn) {
+    takeoverBtn.onclick = () => {
+      if (director && !director.isDirector) {
+        director.take();
+        updateTopBar();
+      }
+    };
+  }
 });

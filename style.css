@@ -1,62 +1,252 @@
+* {
+  box-sizing: border-box;
+}
 
-* { box-sizing: border-box; }
 body {
   font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-  margin: 0; padding: 0;
-  background: #0a0a0a; color: #eaeaea;
+  margin: 0;
+  padding: 0;
+  background: #0a0a0a;
+  color: #eaeaea;
+  position: relative;
+  min-height: 100vh;
 }
-#app { max-width: 960px; margin: 0 auto; padding: 16px; }
 
-header { display: block; text-align: center; position: relative; }
-header h1 { margin: 0; font-size: 20px; font-weight: 700; }
-.status { opacity: 0.8; font-size: 12px; margin-top: 4px; }
+/* Body-wide neon glow via a fixed overlay frame */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 8px;
+  border-radius: 14px;
+  pointer-events: none;
+  z-index: 999;
+  border: 2px solid transparent;
+}
 
-section { margin: 18px 0; padding: 12px; border: 1px solid #222; border-radius: 12px; background: #121212; }
-section h2 { margin-top: 0; font-size: 16px; }
-.hidden { display: none; }
+/* Director = neon blue */
+body.role-director::before {
+  border-color: rgba(80, 150, 255, 0.8);
+  box-shadow:
+    0 0 18px rgba(51, 153, 255, 0.85) inset,
+    0 0 26px rgba(51, 153, 255, 0.35),
+    0 0 46px rgba(51, 153, 255, 0.25);
+}
 
-.row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
-input, button, label {
-  font-size: 14px;
+/* Peer = neon green */
+body.role-peer::before {
+  border-color: rgba(80, 255, 150, 0.85);
+  box-shadow:
+    0 0 18px rgba(0, 255, 153, 0.85) inset,
+    0 0 26px rgba(0, 255, 153, 0.35),
+    0 0 46px rgba(0, 255, 153, 0.25);
 }
-input[type="text"], input[type="file"], input[type="range"], input#swarmName, input#swarmSecret {
-  background: #1a1a1a; color: #eaeaea; border: 1px solid #333; padding: 8px; border-radius: 8px;
+
+#app {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 16px;
+  padding-bottom: 180px;
+  /* space for fixed Play footer + sheet peek */
 }
-button {
-  background: #222; color: #fafafa; border: 1px solid #333; padding: 8px 12px; border-radius: 10px; cursor: pointer;
+
+/* --- Header: fixed positions (no responsive reflow) --- */
+header {
+  position: relative;
+  padding: 10px 12px 0 12px;
+  text-align: center;
 }
+
+header h1 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+/* Leave button always top-left */
 .leaveBtn {
   position: absolute;
   top: 8px;
-  left: 8px;
+  left: 12px;
   background: #2a2a2a;
   border: 1px solid #3a3a3a;
   padding: 6px 10px;
   border-radius: 8px;
   font-size: 12px;
 }
-button:disabled { opacity: 0.5; cursor: not-allowed; }
-.hint { opacity: 0.7; font-size: 12px; }
 
-#fileList { display: flex; flex-direction: column; gap: 8px; }
-.file-row { padding: 10px 12px; border: 1px solid #222; border-radius: 10px; background: #0f0f0f; display: flex; align-items: center; justify-content: space-between; }
-.file-row.selected { border-color: #fff; }
-.file-row.placeholder { opacity: 0.6; }
-.file-row .name { font-size: 14px; }
-.badge { padding: 2px 6px; border-radius: 6px; font-size: 12px; background: #222; border: 1px solid #333; }
-.badge.ready { background: #143016; border-color: #1f5f25; }
-.badge.fetching { background: #2a1d10; border-color: #7a4a12; }
-.badge.seeding { background: #10232d; border-color: #1e5a7a; }
-.badge.error { background: #3a1414; border-color: #7a1e1e; }
+.status {
+  opacity: 0.85;
+  font-size: 12px;
+  margin: 6px 0 6px 0;
+}
 
-pre#debugLog { max-height: 180px; overflow: auto; background: #0b0b0b; border: 1px solid #222; padding: 8px; border-radius: 8px; }
+/* Remove previous responsive header behavior */
+@media (min-width: 0) {
+  /* intentionally empty to override older rules */
+}
+
+section {
+  margin: 18px 0;
+  padding: 12px;
+  border: 1px solid #222;
+  border-radius: 12px;
+  background: #121212;
+}
+
+section h2 {
+  margin-top: 0;
+  font-size: 16px;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 8px 0;
+}
+
+input,
+button,
+label {
+  font-size: 14px;
+}
+
+input[type="text"],
+input[type="file"],
+input[type="range"],
+input#swarmName,
+input#swarmSecret {
+  background: #1a1a1a;
+  color: #eaeaea;
+  border: 1px solid #333;
+  padding: 8px;
+  border-radius: 8px;
+}
+
+button {
+  background: #222;
+  color: #fafafa;
+  border: 1px solid #333;
+  padding: 8px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.hint {
+  opacity: 0.7;
+  font-size: 12px;
+}
+
+#fileList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.file-row {
+  padding: 10px 12px;
+  border: 1px solid #222;
+  border-radius: 10px;
+  background: #0f0f0f;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  transition: box-shadow 140ms ease, border-color 140ms ease;
+}
+
+.file-row.placeholder {
+  opacity: 0.6;
+}
+
+.file-row .name {
+  font-size: 14px;
+}
+
+.badge {
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-size: 12px;
+  background: #222;
+  border: 1px solid #333;
+}
+
+.badge.ready {
+  background: #143016;
+  border-color: #1f5f25;
+}
+
+.badge.fetching {
+  background: #2a1d10;
+  border-color: #7a4a12;
+}
+
+.badge.seeding {
+  background: #10232d;
+  border-color: #1e5a7a;
+}
+
+.badge.error {
+  background: #3a1414;
+  border-color: #7a1e1e;
+}
+
+/* Neon highlights for selections */
+.file-row.selected-director {
+  border-color: #6cc0ff;
+  box-shadow:
+    0 0 6px rgba(51, 153, 255, 0.9),
+    0 0 14px rgba(51, 153, 255, 0.45);
+}
+
+.file-row.selected-local {
+  border-color: #7fffd0;
+  box-shadow:
+    0 0 6px rgba(0, 255, 153, 0.9),
+    0 0 14px rgba(0, 255, 153, 0.45);
+}
+
+pre#debugLog {
+  max-height: 180px;
+  overflow: auto;
+  background: #0b0b0b;
+  border: 1px solid #222;
+  padding: 8px;
+  border-radius: 8px;
+}
 
 #delaySlider {
   width: 100%;
 }
 
-/* New UI elements for simplified two-screen flow */
-.row.center { justify-content: center; }
+.row.center {
+  justify-content: center;
+}
+
+/* --- Play section: fixed footer above sheet peek; starts hidden --- */
+#playSection {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 68px;
+  z-index: 950;
+  /* below overlay and open sheet */
+  background: transparent;
+  border: none;
+  margin: 0;
+  padding: 10px 0 18px 0;
+}
 
 .primaryPlay {
   width: 96px;
@@ -69,73 +259,64 @@ pre#debugLog { max-height: 180px; overflow: auto; background: #0b0b0b; border: 1
   align-items: center;
   justify-content: center;
 }
-.primaryPlay:disabled { opacity: 0.5; }
 
-.linkish {
-  background: transparent;
-  border: none;
-  color: #9ad;
-  text-decoration: underline;
-  cursor: pointer;
-  font-size: 14px;
-}
-.linkish:hover { color: #cde; }
-
-/* Floating controls button (bottom-centered like a modern slide-up panel trigger) */
-#toggleControlsBtn {
-  position: fixed;
-  bottom: 14px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 902; /* above sheet (901) and overlay (900) so it's visible but below any global UI if needed */
-  background: rgba(18,18,18,0.95);
-  border: 1px solid #333;
-  color: #9ad;
-  padding: 8px 14px;
-  border-radius: 20px;
-  box-shadow: 0 6px 18px rgba(0,0,0,0.45);
-  text-decoration: none;
-  cursor: pointer;
+.primaryPlay:disabled {
+  opacity: 0.5;
 }
 
-/* When the toggle is moved into the sheet it should appear as the top control (no longer fixed) */
-#toggleControlsBtn.in-sheet {
-  position: relative;
-  bottom: auto;
-  left: auto;
-  transform: none;
-  margin: 0 auto 8px auto;
-  z-index: auto;
-  box-shadow: none;
-  /* keep a solid, visible background so it reads as the header control */
-  background: rgba(18,18,18,0.98);
+/* Controls container & takeover btn */
+.hidden-input {
+  display: none;
+}
+
+.controlsContainer {
+  margin-top: 8px;
+  padding: 12px;
   border: 1px solid #222;
+  border-radius: 12px;
+  background: #121212;
+}
+
+.controlsHeader {
+  text-align: center;
+  opacity: 0.8;
+  margin-bottom: 12px;
+}
+
+.takeoverBtn {
+  background: #0f2e21;
+  border: 1px solid #1ca36d;
+  color: #98ffd9;
+  border-radius: 10px;
   padding: 8px 12px;
-  border-radius: 14px;
-  display: block;
 }
 
-/* Slightly larger tap target on small screens */
-@media (max-width: 420px) {
-  #toggleControlsBtn {
-    padding: 10px 18px;
-    border-radius: 24px;
-    font-size: 15px;
-  }
+.takeoverBtn:hover {
+  filter: brightness(1.08);
 }
 
-.hidden-input { display: none; }
+.delayAdjust {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
 
-.controlsContainer { margin-top: 8px; padding: 12px; border: 1px solid #222; border-radius: 12px; background: #121212; }
-.controlsHeader { text-align: center; opacity: 0.8; margin-bottom: 12px; }
+.delayBox {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
 
-.delayAdjust { display: flex; align-items: center; gap: 10px; }
-.delayBox { flex: 1; display: flex; flex-direction: column; gap: 6px; }
-.delayVal { text-align: center; font-size: 14px; opacity: 0.9; }
+.delayVal {
+  text-align: center;
+  font-size: 14px;
+  opacity: 0.9;
+}
 
 .nudgeBtn {
-  width: 40px;
-  height: 40px;
+  width: 80px;
+  height: 80px;
   border-radius: 8px;
   background: #1d1d1d;
   border: 1px solid #333;
@@ -146,32 +327,49 @@ pre#debugLog { max-height: 180px; overflow: auto; background: #0b0b0b; border: 1
 .sheetOverlay {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.5);
+  background: rgba(0, 0, 0, 0.6);
+  /* slightly darker; fully blocks clicks */
   opacity: 0;
   pointer-events: none;
   transition: opacity 180ms ease;
-  z-index: 900;
+  z-index: 980;
 }
+
 .sheetOverlay.open {
   opacity: 1;
   pointer-events: auto;
+  z-index: 1000;
+  /* sits above play, below the open sheet */
 }
+
+/* Closed panel leaves a 68px "peek" (the header area) */
 .bottomSheet {
   position: fixed;
-  left: 0; right: 0; bottom: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
   background: #111;
+  /* opaque base */
   border-top-left-radius: 16px;
   border-top-right-radius: 16px;
-  box-shadow: 0 -8px 24px rgba(0,0,0,0.5);
-  transform: translateY(100%);
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.5);
+  transform: translateY(calc(100% - 68px));
   transition: transform 220ms ease;
-  z-index: 901;
-  padding: 10px 12px 16px 12px;
+  z-index: 981;
+  /* closed: below play */
+  padding: 2px;
   border-top: 1px solid #222;
+  overflow: visible;
 }
+
 .bottomSheet.open {
   transform: translateY(0);
+  z-index: 1001;
+  /* open: above overlay + play */
+  background: #0f0f0f;
+  /* opaque when expanded */
 }
+
 .sheetHandle {
   width: 36px;
   height: 4px;
@@ -179,5 +377,49 @@ pre#debugLog { max-height: 180px; overflow: auto; background: #0b0b0b; border: 1
   border-radius: 4px;
   margin: 4px auto 12px auto;
 }
-/* clickable rows */
-.file-row { cursor: pointer; }
+
+/* Clickable top of the panel; full-width tap target */
+.sheetHeader {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 12px;
+  background: #121212;
+  /* opaque */
+  border: none;
+  border-top-left-radius: 16px;
+  border-top-right-radius: 16px;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  box-shadow:
+    0 -1px 0 rgba(255, 255, 255, 0.04) inset,
+    0 1px 0 rgba(0, 0, 0, 0.35) inset;
+}
+
+.sheetHeader .title {
+  font-size: 23px;
+  letter-spacing: 0.4px;
+  opacity: 0.85;
+  text-transform: lowercase;
+}
+
+/* Keep header easy to tap when closed */
+.bottomSheet:not(.open) .sheetHeader {
+  min-height: 48px;
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+
+/* Optional hover affordance */
+@media (hover:hover) {
+  .sheetHeader:hover {
+    filter: brightness(1.04);
+  }
+}

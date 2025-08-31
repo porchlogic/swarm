@@ -1,5 +1,6 @@
 <!doctype html>
 <html lang="en">
+
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -8,6 +9,7 @@
   <!-- WebTorrent for P2P file sharing (browser) -->
   <script src="https://cdn.jsdelivr.net/npm/webtorrent@latest/webtorrent.min.js"></script>
 </head>
+
 <body>
   <div id="app">
     <header>
@@ -22,7 +24,6 @@
       <div id="errorBanner" class="hidden"
         style="margin-top:8px;padding:8px;border:1px solid #703; background:#300; color:#fbb; border-radius:8px;">
       </div>
-
     </header>
 
     <section id="joinSection">
@@ -34,19 +35,8 @@
       </div>
     </section>
 
-
     <section id="screenFiles" class="hidden">
       <div id="fileList"></div>
-
-      <div class="row center">
-        <button id="primaryPlayBtn" class="primaryPlay" disabled aria-label="Play">
-          <span id="primaryPlayIcon">▶</span>
-        </button>
-      </div>
-
-      <div class="row center">
-        <button id="toggleControlsBtn" class="linkish">controls ▼</button>
-      </div>
 
       <input id="fileInput" type="file" multiple accept=".mp3, .wav, .ogg" class="hidden-input" />
 
@@ -55,13 +45,29 @@
       </div>
     </section>
 
+    <!-- Play section is a fixed footer above the controls panel; hidden until joined -->
+    <section id="playSection" class="hidden">
+      <div class="row center">
+        <button id="primaryPlayBtn" class="primaryPlay" disabled aria-label="Play">
+          <span id="primaryPlayIcon">▶</span>
+        </button>
+      </div>
+    </section>
 
-    <!-- Bottom sheet overlay and panel -->
-    <div id="controlsOverlay" class="sheetOverlay"></div>
-    <div id="controlsSheet" class="bottomSheet" role="dialog" aria-modal="true" aria-hidden="true">
-      <div class="sheetHandle"></div>
+    <!-- Bottom sheet overlay and panel (entirely hidden until joined) -->
+    <div id="controlsOverlay" class="sheetOverlay hidden"></div>
+    <div id="controlsSheet" class="bottomSheet hidden" role="dialog" aria-modal="true" aria-hidden="true">
+      <!-- Clickable top bar that is visible when the sheet is closed -->
+      <button id="controlsHeader" class="sheetHeader" aria-expanded="false" aria-controls="controlsSheet"
+        aria-label="Open controls">
+        <span class="title">controls</span>
+      </button>
+
       <div class="controlsContainer">
-        <div class="controlsHeader">controls</div>
+        <!-- Director takeover button (shown only when no director is active) -->
+        <div class="row center">
+          <button id="takeoverBtn" class="takeoverBtn hidden">Take over as director</button>
+        </div>
 
         <div class="delayAdjust">
           <button id="delayDecBtn" class="nudgeBtn" aria-label="Decrease delay">◀</button>
@@ -78,11 +84,11 @@
             <pre id="debugLog"></pre>
           </details>
         </div>
-
       </div>
     </div>
   </div>
 
   <script type="module" src="./app.js"></script>
 </body>
+
 </html>
