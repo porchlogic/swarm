@@ -1,15 +1,29 @@
+/* ========== Global Reset & App-Like Behavior (no page zoom/scroll) ========== */
 * {
   box-sizing: border-box;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
+html,
 body {
-  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  height: 100%;
   margin: 0;
   padding: 0;
   background: #0a0a0a;
   color: #eaeaea;
+  overflow: hidden;
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: auto;
+  touch-action: manipulation;
   position: relative;
-  min-height: 100vh;
+
+  /* restore your original system font stack */
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  /* optional: slightly crisper rendering */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* Body-wide neon glow via a fixed overlay frame */
@@ -41,12 +55,17 @@ body.role-peer::before {
     0 0 46px rgba(0, 255, 153, 0.25);
 }
 
+/* ========== App Layout: header (fixed height), content, footer ========== */
 #app {
   max-width: 960px;
   margin: 0 auto;
   padding: 16px;
-  padding-bottom: 180px;
-  /* space for fixed Play footer + sheet peek */
+  padding-bottom: 0;
+  /* keep fixed elements off the layout calc */
+  min-height: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
 /* --- Header: fixed positions (no responsive reflow) --- */
@@ -54,30 +73,11 @@ header {
   position: relative;
   padding: 10px 12px 0 12px;
   text-align: center;
-}
-.qrBtn {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: #fff;
-  /* inherit text color, tweak as needed */
-  padding: 6px;
-  border-radius: 6px;
-  transition: background 0.2s;
+  flex: 0 0 auto;
+  z-index: 960;
+  /* above content, below open sheet */
 }
 
-.qrBtn:hover {
-  background: rgba(255, 255, 255, 0.1);
-}
-
-.qrBtn svg {
-  display: block;
-  width: 32px;
-  height: 32px;
-}
 header h1 {
   margin: 0;
   font-size: 30px;
@@ -102,21 +102,40 @@ header h1 {
   margin: 6px 0 6px 0;
 }
 
+/* QR button top-right */
+.qrBtn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #fff;
+  padding: 6px;
+  border-radius: 6px;
+  transition: background 0.2s;
+}
+
+.qrBtn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.qrBtn svg {
+  display: block;
+  width: 32px;
+  height: 32px;
+}
+
 /* Remove previous responsive header behavior */
 @media (min-width: 0) {
   /* intentionally empty to override older rules */
 }
 
-#screenFiles {
-  margin-top:20px;
-}
-
+/* ========== Content Sections ========== */
 section {
   margin: 18px 0;
   padding: 12px;
-  /* border: 1px solid #222; */
-  /* border-radius: 12px; */
-  /* background: #1212121c; */
+  flex: 0 0 auto;
 }
 
 section h2 {
@@ -136,10 +155,17 @@ section h2 {
   margin: 8px 0;
 }
 
+.row.center {
+  justify-content: center;
+}
+
 input,
 button,
 label {
   font-size: 14px;
+  -webkit-user-select: text;
+  user-select: text;
+  /* allow text selection in inputs/labels */
 }
 
 input[type="text"],
@@ -173,12 +199,32 @@ button:disabled {
   font-size: 12px;
 }
 
+/* ========== Files Screen: the ONLY scrollable region ========== */
+#screenFiles {
+  flex: 1 1 auto;
+  /* take remaining height between header and fixed UI */
+  min-height: 0;
+  /* allow child to shrink/scroll properly */
+  display: flex;
+  flex-direction: column;
+  margin-top: 12px;
+}
+
+/* Only this element scrolls */
 #fileList {
+  flex: 1 1 auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  overflow: auto;
+  /* <- the one scrollable area */
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 180px;
+  /* leave room for play button & sheet peek */
 }
 
+/* File rows */
 .file-row {
   padding: 10px 12px;
   border: 1px solid #222;
@@ -199,6 +245,7 @@ button:disabled {
   font-size: 14px;
 }
 
+/* Badges */
 .badge {
   padding: 2px 6px;
   border-radius: 6px;
@@ -242,82 +289,20 @@ button:disabled {
     0 0 14px rgba(0, 255, 153, 0.45);
 }
 
+/* Debug log: if you want ONLY file list to scroll, keep this non-scrollable. */
 pre#debugLog {
   max-height: 180px;
-  overflow: auto;
+  overflow: hidden;
+  /* set to 'auto' if you want it scrollable */
   background: #0b0b0b;
   border: 1px solid #222;
   padding: 8px;
   border-radius: 8px;
 }
 
+/* Delay controls */
 #delaySlider {
   width: 100%;
-}
-
-.row.center {
-  justify-content: center;
-}
-
-/* --- Play section: fixed footer above sheet peek; starts hidden --- */
-#playSection {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 68px;
-  z-index: 950;
-  /* below overlay and open sheet */
-  background: transparent;
-  border: none;
-  margin: 0;
-  padding: 10px 0 18px 0;
-}
-
-.primaryPlay {
-  width: 96px;
-  height: 96px;
-  border-radius: 50%;
-  background: #1d1d1d;
-  border: 2px solid #444;
-  font-size: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.primaryPlay:disabled {
-  opacity: 0.5;
-}
-
-/* Controls container & takeover btn */
-.hidden-input {
-  display: none;
-}
-
-.controlsContainer {
-  margin-top: 8px;
-  padding: 12px;
-  border: 1px solid #222;
-  border-radius: 12px;
-  background: #121212;
-}
-
-.controlsHeader {
-  text-align: center;
-  opacity: 0.8;
-  margin-bottom: 12px;
-}
-
-.takeoverBtn {
-  background: #0f2e21;
-  border: 1px solid #1ca36d;
-  color: #98ffd9;
-  border-radius: 10px;
-  padding: 8px 12px;
-}
-
-.takeoverBtn:hover {
-  filter: brightness(1.08);
 }
 
 .delayAdjust {
@@ -346,14 +331,78 @@ pre#debugLog {
   background: #1d1d1d;
   border: 1px solid #333;
   font-size: 18px;
+  touch-action: manipulation;
 }
 
-/* Bottom sheet overlay and panel */
+/* Hidden file input */
+.hidden-input {
+  display: none;
+}
+
+/* Controls container & takeover btn */
+.controlsContainer {
+  margin-top: 8px;
+  padding: 12px;
+  border: 1px solid #222;
+  border-radius: 12px;
+  background: #121212;
+}
+
+.controlsHeader {
+  text-align: center;
+  opacity: 0.8;
+  margin-bottom: 12px;
+}
+
+.takeoverBtn {
+  background: #0f2e21;
+  border: 1px solid #1ca36d;
+  color: #98ffd9;
+  border-radius: 10px;
+  padding: 8px 12px;
+}
+
+.takeoverBtn:hover {
+  filter: brightness(1.08);
+}
+
+/* ========== Play Section: fixed footer above sheet peek; starts hidden ========== */
+#playSection {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 68px;
+  z-index: 950;
+  /* below overlay (1000) and open sheet (1001) */
+  background: transparent;
+  border: none;
+  margin: 0;
+  padding: 10px 0 18px 0;
+  pointer-events: auto;
+}
+
+.primaryPlay {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  background: #1d1d1d;
+  border: 2px solid #444;
+  font-size: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: manipulation;
+}
+
+.primaryPlay:disabled {
+  opacity: 0.5;
+}
+
+/* ========== Bottom Sheet overlay and panel ========== */
 .sheetOverlay {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.6);
-  /* slightly darker; fully blocks clicks */
   opacity: 0;
   pointer-events: none;
   transition: opacity 180ms ease;
@@ -374,7 +423,6 @@ pre#debugLog {
   right: 0;
   bottom: 0;
   background: #111;
-  /* opaque base */
   border-top-left-radius: 16px;
   border-top-right-radius: 16px;
   box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.5);
@@ -395,14 +443,6 @@ pre#debugLog {
   /* opaque when expanded */
 }
 
-.sheetHandle {
-  width: 36px;
-  height: 4px;
-  background: #333;
-  border-radius: 4px;
-  margin: 4px auto 12px auto;
-}
-
 /* Clickable top of the panel; full-width tap target */
 .sheetHeader {
   position: sticky;
@@ -416,7 +456,6 @@ pre#debugLog {
   min-height: 48px;
   padding: 10px 12px;
   background: #121212;
-  /* opaque */
   border: none;
   border-top-left-radius: 16px;
   border-top-right-radius: 16px;
@@ -426,6 +465,7 @@ pre#debugLog {
   box-shadow:
     0 -1px 0 rgba(255, 255, 255, 0.04) inset,
     0 1px 0 rgba(0, 0, 0, 0.35) inset;
+  touch-action: manipulation;
 }
 
 .sheetHeader .title {
@@ -447,4 +487,14 @@ pre#debugLog {
   .sheetHeader:hover {
     filter: brightness(1.04);
   }
+}
+
+/* Utility */
+.hidden {
+  display: none !important;
+}
+
+/* QR overlay is highest z */
+#qrOverlay {
+  z-index: 9999 !important;
 }
