@@ -374,7 +374,7 @@ window.addEventListener("DOMContentLoaded", () => {
     }
     const meta = swarm.getMeta(state.directorFileId);
     const isCached = playback._cache?.has?.(state.directorFileId);
-    const startInMs = isCached ? 1200 : 2600;
+    const startInMs = isCached ? 2400 : 3600;
 
     await playback.ensureDecoded(state.directorFileId, meta.blobUrl);
 
