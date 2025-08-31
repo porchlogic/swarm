@@ -11,61 +11,76 @@
 <body>
   <div id="app">
     <header>
-      <h1>Audio Swarm</h1>
-      <div class="status">
+      <button id="leaveBtn" class="leaveBtn hidden" disabled>Leave</button>
+      <h1 id="swarmTitle">Audio Swarm</h1>
+      <div id="statusContainer" class="status hidden">
         <span id="connStatus">disconnected</span> •
         <span id="swarmPeers">peers: 0</span> •
         <span id="directorStatus">director: ?</span> •
         <span id="clockStatus">offset: —</span>
       </div>
-      <div id="errorBanner"
-        style="display:none;margin-top:8px;padding:8px;border:1px solid #703; background:#300; color:#fbb; border-radius:8px;">
+      <div id="errorBanner" class="hidden"
+        style="margin-top:8px;padding:8px;border:1px solid #703; background:#300; color:#fbb; border-radius:8px;">
       </div>
 
     </header>
 
     <section id="joinSection">
-      <h2>Join a swarm</h2>
+      <h2>Join or create a swarm</h2>
       <div class="row">
-        <input id="swarmKey" placeholder="enter swarm key" />
-        <button id="joinBtn">Join</button>
-        <button id="leaveBtn" disabled>Leave</button>
+        <input id="swarmName" placeholder="swarm name" />
+        <input id="swarmSecret" placeholder="secret key" type="password" />
+        <button id="joinBtn">Create / Join</button>
       </div>
     </section>
 
-    <section id="fileSection" class="hidden">
-      <h2>Files</h2>
-      <div class="row">
-        <input id="fileInput" type="file" multiple accept=".mp3, .wav, .ogg" />
-        <button id="seedBtn">Add & Seed</button>
-        <span class="hint">limit: 3 files</span>
-      </div>
+
+    <section id="screenFiles" class="hidden">
       <div id="fileList"></div>
+
+      <div class="row center">
+        <button id="primaryPlayBtn" class="primaryPlay" disabled aria-label="Play">
+          <span id="primaryPlayIcon">▶</span>
+        </button>
+      </div>
+
+      <div class="row center">
+        <button id="toggleControlsBtn" class="linkish">controls ▼</button>
+      </div>
+
+      <input id="fileInput" type="file" multiple accept=".mp3, .wav, .ogg" class="hidden-input" />
+
+      <div class="row center">
+        <label id="currentFileLabel" class="hint">No file selected</label>
+      </div>
     </section>
 
-    <section id="playbackSection" class="hidden">
-      <h2>Playback</h2>
-      <div class="row">
-        <button id="playBtn" disabled>Play</button>
-        <button id="stopBtn" disabled>Stop</button>
-        <label id="currentFileLabel">No file selected</label>
+
+    <!-- Bottom sheet overlay and panel -->
+    <div id="controlsOverlay" class="sheetOverlay"></div>
+    <div id="controlsSheet" class="bottomSheet" role="dialog" aria-modal="true" aria-hidden="true">
+      <div class="sheetHandle"></div>
+      <div class="controlsContainer">
+        <div class="controlsHeader">controls</div>
+
+        <div class="delayAdjust">
+          <button id="delayDecBtn" class="nudgeBtn" aria-label="Decrease delay">◀</button>
+          <div class="delayBox">
+            <div id="delayVal" class="delayVal">0 ms</div>
+            <input id="delaySlider" type="range" min="-2500" max="2500" value="0" step="1" />
+          </div>
+          <button id="delayIncBtn" class="nudgeBtn" aria-label="Increase delay">▶</button>
+        </div>
+
+        <div class="row">
+          <details>
+            <summary>Debug</summary>
+            <pre id="debugLog"></pre>
+          </details>
+        </div>
+
       </div>
-      <div class="row">
-        <label>Speaker delay (ms):</label>
-        <input id="speakerDelay" type="range" min="0" max="2500" value="0" />
-        <span id="speakerDelayVal">0 ms</span>
-      </div>
-      <div class="row">
-        <button id="takeDirectorBtn">Take director</button>
-        <button id="resignDirectorBtn">Resign</button>
-      </div>
-      <div class="row">
-        <details>
-          <summary>Debug</summary>
-          <pre id="debugLog"></pre>
-        </details>
-      </div>
-    </section>
+    </div>
   </div>
 
   <script type="module" src="./app.js"></script>

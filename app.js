@@ -6,7 +6,7 @@ import { ControlChannel } from "./modules/control.js";
 import { SwarmFiles } from "./modules/swarm.js";
 import { Playback } from "./modules/playback.js";
 import { Director } from "./modules/director.js";
-import { byId, setText, setHidden, setDisabled, fileRow } from "./modules/ui.js";
+import { byId, setText, setHidden, setDisabled, fileRow, plusRow } from "./modules/ui.js";
 
 const connStatus = byId("connStatus");
 const swarmPeers = byId("swarmPeers");
@@ -14,19 +14,24 @@ const directorStatus = byId("directorStatus");
 const clockStatus = byId("clockStatus");
 const debugEl = byId("debugLog");
 
-const joinBtn = byId("joinBtn");
-const leaveBtn = byId("leaveBtn");
-const swarmKeyEl = byId("swarmKey");
-const seedBtn = byId("seedBtn");
-const fileInput = byId("fileInput");
-const fileListEl = byId("fileList");
-const playBtn = byId("playBtn");
-const stopBtn = byId("stopBtn");
-const currentFileLabel = byId("currentFileLabel");
-const speakerDelay = byId("speakerDelay");
-const speakerDelayVal = byId("speakerDelayVal");
-const takeDirectorBtn = byId("takeDirectorBtn");
-const resignDirectorBtn = byId("resignDirectorBtn");
+let joinBtn;
+let leaveBtn;
+let swarmNameEl;
+let swarmSecretEl;
+let fileInput;
+let fileListEl;
+let primaryPlayBtn;
+let primaryPlayIcon;
+let toggleControlsBtn;
+let currentFileLabel;
+let delaySlider;
+let delayVal;
+let delayIncBtn;
+let delayDecBtn;
+let controlsOverlay;
+let controlsSheet;
+let toggleOriginalParent;
+let toggleOriginalNextSibling;
 
 let control = null;
 let director = null;
@@ -77,22 +82,35 @@ function renderFiles() {
   for (const f of files) {
     fileListEl.appendChild(fileRow({
       file: f,
+      selected: state.currentFileId === f.fileId,
       onSelectToggle: (fileId) => {
         state.currentFileId = fileId;
         currentFileLabel.textContent = `Selected: ${f.name}`;
         if (director?.isDirector) control.send("selectFile", { fileId });
         updatePlaybackButtons();
         if (f.ready) playback.ensureDecoded(fileId, f.blobUrl).catch(()=>{});
+        renderFiles();
       }
     }));
   }
+  // "+" add file row at the end
+  fileListEl.appendChild(plusRow({
+    onAdd: () => fileInput?.click?.()
+  }));
 }
 
 function updatePlaybackButtons() {
   const hasFile = !!(state.currentFileId && swarm?.getMeta(state.currentFileId)?.ready);
-  const canPlay = director?.isDirector && hasFile && !state.playing && !!offset?.baseLocked;
-  setDisabled("playBtn", !canPlay);
-  setDisabled("stopBtn", !(director?.isDirector && state.playing));
+  const canControl = !!director?.isDirector && !!offset?.baseLocked;
+  const playing = !!state.playing;
+
+  // Enable main button only if director and a file is ready
+  const enable = canControl && hasFile;
+  setDisabled("primaryPlayBtn", !enable);
+
+  // Icon: ▶ when not playing, ■ when playing
+  const iconEl = byId("primaryPlayIcon");
+  if (iconEl) iconEl.textContent = playing ? "■" : "▶";
 }
 
 function updateTopBar() {
@@ -135,19 +153,31 @@ function stopFromMessage() {
 
 // Join flow
 async function join() {
-  const key = swarmKeyEl.value.trim();
-  if (!key) return;
-  state.swarmHash = await sha256Hex(key);
-  log(debugEl, `swarmHash: ${state.swarmHash}`);
+  const name = swarmNameEl.value.trim();
+  const secret = swarmSecretEl.value.trim();
+  if (!name || !secret) {
+    alert("Please enter a swarm name and secret key.");
+    return;
+  }
+  const composite = `${name}:${secret}`;
+  state.swarmHash = await sha256Hex(composite);
+  log(debugEl, `swarmHash: ${state.swarmHash} (from ${name}:****)`);
 
   offset = new OffsetEstimator(); // robust version if you applied patch5; otherwise existing works
   const persisted = loadPersisted(state.swarmHash);
 
   playback = new Playback({ debugEl });
   playback.setGlobalNowProvider(() => getGlobalNow());
-  playback.setSpeakerDelay(persisted.speakerDelayMs || 0);
-  speakerDelay.value = String(persisted.speakerDelayMs || 0);
-  speakerDelayVal.textContent = `${speakerDelay.value} ms`;
+  const initialDelay = Number.isFinite(persisted.speakerDelayMs) ? persisted.speakerDelayMs : 0;
+  if (initialDelay >= 0) {
+    playback.setSpeakerDelay(initialDelay);
+    playback.setScheduleAdjust(0);
+  } else {
+    playback.setSpeakerDelay(0);
+    playback.setScheduleAdjust(initialDelay);
+  }
+  if (delaySlider) delaySlider.value = String(initialDelay);
+  if (delayVal) delayVal.textContent = `${initialDelay|0} ms`;
 
   // const urlParamWS = new URLSearchParams(location.search).get("ws");
   // const ctrlUrl = urlParamWS || `${location.protocol}//${location.host}`;
@@ -159,10 +189,16 @@ async function join() {
   control = new ControlChannel({ url: ctrlUrl, swarmHash: state.swarmHash, userId: state.userId, debugEl });
   await control.connect();
   connStatus.textContent = "connected";
-  setHidden("fileSection", false);
-  setHidden("playbackSection", false);
+  setHidden("statusContainer", false);
+  setHidden("screenFiles", false);
+  // hide the join UI once we've successfully joined and surface a persistent leave button
+  setHidden("joinSection", true);
+  setHidden("leaveBtn", false);
+  setHidden("errorBanner", true);
   setDisabled("leaveBtn", false);
   setDisabled("joinBtn", true);
+  // Update header to show swarm name
+  setText("swarmTitle", name);
 
   control.startClockPings(5);
   director = new Director({ control, debugEl });
@@ -237,52 +273,197 @@ async function join() {
   updateTopBar();
 }
 
-// UI
-joinBtn.onclick = async () => {
-  try { await join(); }
-  catch (err) {
-    console.error(err);
-    debugEl.textContent = `Join error: ${err?.message || err}\n` + debugEl.textContent;
-    alert("Join failed. See Debug for details.");
+// UI — bind elements and wire handlers after DOM is ready
+window.addEventListener("DOMContentLoaded", () => {
+  joinBtn = byId("joinBtn");
+  leaveBtn = byId("leaveBtn");
+  swarmNameEl = byId("swarmName");
+  swarmSecretEl = byId("swarmSecret");
+  fileInput = byId("fileInput");
+  fileListEl = byId("fileList");
+  primaryPlayBtn = byId("primaryPlayBtn");
+  primaryPlayIcon = byId("primaryPlayIcon");
+  toggleControlsBtn = byId("toggleControlsBtn");
+  currentFileLabel = byId("currentFileLabel");
+  delaySlider = byId("delaySlider");
+  delayVal = byId("delayVal");
+  delayIncBtn = byId("delayIncBtn");
+  delayDecBtn = byId("delayDecBtn");
+  controlsOverlay = byId("controlsOverlay");
+  controlsSheet = byId("controlsSheet");
+
+  // Remember where the toggle lives so we can move it into the sheet while it's open
+  toggleOriginalParent = toggleControlsBtn?.parentNode || null;
+  toggleOriginalNextSibling = toggleControlsBtn?.nextSibling || null;
+
+  joinBtn.onclick = async () => {
+    try { await join(); }
+    catch (err) {
+      console.error(err);
+      debugEl.textContent = `Join error: ${err?.message || err}\n` + debugEl.textContent;
+      alert("Join failed. See Debug for details.");
+    }
+  };
+  leaveBtn.onclick = () => location.reload();
+
+  fileInput.onchange = async () => {
+    const files = fileInput.files;
+    if (!files || files.length === 0) return;
+    await swarm.seedFiles(files, (announce) => control.send("file:announce", announce));
+    fileInput.value = "";
+    renderFiles();
+    updatePlaybackButtons();
+  };
+
+  primaryPlayBtn.onclick = async () => {
+    if (!director?.isDirector || !state.currentFileId || !offset?.baseLocked) return;
+    if (state.playing) {
+      control.send("stop", {});
+      stopFromMessage();
+      return;
+    }
+    const meta = swarm.getMeta(state.currentFileId);
+    const isCached = playback._cache?.has?.(state.currentFileId);
+    const startInMs = isCached ? 1200 : 2600;
+
+    // Ensure buffer is ready before we pick a start time
+    await playback.ensureDecoded(state.currentFileId, meta.blobUrl);
+
+    const globalStartTimeMs = getGlobalNow() + startInMs;
+    const m = { fileId: state.currentFileId, globalStartTimeMs };
+    control.send("play", m);
+    await playFromMessage(m);
+  };
+
+  // Wire delay controls (slider + inc/dec) found within `root` (Element or Document).
+  // Uses a data attribute to avoid attaching duplicate listeners.
+  function wireDelayControls(root) {
+    try {
+      const r = root || document;
+      const sDelaySlider = (r.querySelector ? r.querySelector("#delaySlider") : null);
+      const sDelayVal = (r.querySelector ? r.querySelector("#delayVal") : null);
+      const sInc = (r.querySelector ? r.querySelector("#delayIncBtn") : null);
+      const sDec = (r.querySelector ? r.querySelector("#delayDecBtn") : null);
+
+      // Update global refs so other code can read them
+      if (sDelaySlider) delaySlider = sDelaySlider;
+      if (sDelayVal) delayVal = sDelayVal;
+      if (sInc) delayIncBtn = sInc;
+      if (sDec) delayDecBtn = sDec;
+
+      // Helper to attach a listener only once
+      const attachOnce = (el, ev, fn) => {
+        if (!el) return;
+        const key = `wired_${ev}`;
+        if (el.dataset && el.dataset[key]) return;
+        el.addEventListener(ev, fn);
+        if (el.dataset) el.dataset[key] = "1";
+      };
+
+      attachOnce(sDelaySlider, "input", () => {
+        const v = parseInt(sDelaySlider.value, 10) || 0;
+        applyDelayValue(v);
+      });
+      attachOnce(sInc, "click", () => {
+        const v = (parseInt((sDelaySlider && sDelaySlider.value) || "0", 10) || 0) + 10;
+        applyDelayValue(v);
+      });
+      attachOnce(sDec, "click", () => {
+        const v = (parseInt((sDelaySlider && sDelaySlider.value) || "0", 10) || 0) - 10;
+        applyDelayValue(v);
+      });
+    } catch (e) { /* defensive */ }
   }
-};
-leaveBtn.onclick = () => location.reload();
 
-seedBtn.onclick = async () => {
-  const files = fileInput.files;
-  if (!files || files.length === 0) return;
-  await swarm.seedFiles(files, (announce) => control.send("file:announce", announce));
-  renderFiles();
-  updatePlaybackButtons();
-};
+  const openControlsSheet = () => {
+    if (controlsOverlay) controlsOverlay.classList.add("open");
+    if (controlsSheet) {
+      controlsSheet.classList.add("open");
+      controlsSheet.setAttribute("aria-hidden", "false");
+      // Move the floating toggle into the sheet so it appears at the top of the panel (after the handle)
+      try {
+        if (toggleControlsBtn && toggleOriginalParent && !controlsSheet.contains(toggleControlsBtn)) {
+          const container = controlsSheet.querySelector(".controlsContainer");
+          // insert after the handle and before the controls container
+          if (container) controlsSheet.insertBefore(toggleControlsBtn, container);
+          else controlsSheet.insertBefore(toggleControlsBtn, controlsSheet.firstChild);
+          toggleControlsBtn.classList.add("in-sheet");
+        }
+      } catch (e) { /* defensive */ }
 
-playBtn.onclick = async () => {
-  if (!director.isDirector || !state.currentFileId || !offset.baseLocked) return;
-  const meta = swarm.getMeta(state.currentFileId);
-  const isCached = playback._cache?.has?.(state.currentFileId);
-  const startInMs = isCached ? 1200 : 2600;
+      // Wire controls inside the sheet (safe to call repeatedly)
+      wireDelayControls(controlsSheet);
+    }
+  };
+  const closeControlsSheet = () => {
+    if (controlsOverlay) controlsOverlay.classList.remove("open");
+    if (controlsSheet) {
+      controlsSheet.classList.remove("open");
+      controlsSheet.setAttribute("aria-hidden", "true");
+      // Restore the toggle back to its original place in the file list screen
+      try {
+        if (toggleControlsBtn && toggleOriginalParent && controlsSheet.contains(toggleControlsBtn)) {
+          if (toggleOriginalNextSibling) toggleOriginalParent.insertBefore(toggleControlsBtn, toggleOriginalNextSibling);
+          else toggleOriginalParent.appendChild(toggleControlsBtn);
+          toggleControlsBtn.classList.remove("in-sheet");
+        }
+      } catch (e) { /* defensive */ }
 
-  // Make sure our buffer is ready before we pick a start time
-  const buf = await playback.ensureDecoded(state.currentFileId, meta.blobUrl);
+      // After closing, re-wire controls from the main document area (keeps globals pointing at visible elements)
+      wireDelayControls(document);
+    }
+  };
 
-  const globalStartTimeMs = getGlobalNow() + startInMs;
-  const m = { fileId: state.currentFileId, globalStartTimeMs };
-  control.send("play", m);
-  await playFromMessage(m);
-};
+  if (toggleControlsBtn) {
+    toggleControlsBtn.onclick = () => {
+      if (controlsSheet && controlsSheet.classList.contains("open")) closeControlsSheet();
+      else openControlsSheet();
+    };
+  }
+  if (controlsOverlay) {
+    controlsOverlay.onclick = () => closeControlsSheet();
+  }
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeControlsSheet();
+  });
 
-stopBtn.onclick = () => {
-  if (!director.isDirector) return;
-  control.send("stop", {});
-  stopFromMessage();
-};
+  // Wire delay controls for the currently visible DOM (safe to call multiple times)
+  try { wireDelayControls(document); } catch (e) { /* defensive */ }
 
-speakerDelay.oninput = () => {
-  const v = parseInt(speakerDelay.value, 10) || 0;
-  speakerDelayVal.textContent = `${v} ms`;
-  if (playback) playback.setSpeakerDelay(v);
-  if (state.swarmHash) saveSpeakerDelay(state.swarmHash, v);
-};
+  const applyDelayValue = (v) => {
+    v = Math.max(-2500, Math.min(2500, v|0));
+    if (delayVal) delayVal.textContent = `${v} ms`;
+    if (playback) {
+      if (v >= 0) {
+        playback.setSpeakerDelay(v);
+        playback.setScheduleAdjust(0);
+      } else {
+        playback.setSpeakerDelay(0);
+        playback.setScheduleAdjust(v);
+      }
+    }
+    if (delaySlider) delaySlider.value = String(v);
+    if (state.swarmHash) saveSpeakerDelay(state.swarmHash, v);
+  };
 
-takeDirectorBtn.onclick = () => director?.take();
-resignDirectorBtn.onclick = () => director?.resign();
+  if (delaySlider) {
+    delaySlider.oninput = () => {
+      const v = parseInt(delaySlider.value, 10) || 0;
+      applyDelayValue(v);
+    };
+  }
+  if (delayIncBtn) {
+    delayIncBtn.onclick = () => {
+      const v = (parseInt(delaySlider.value, 10) || 0) + 10;
+      applyDelayValue(v);
+    };
+  }
+  if (delayDecBtn) {
+    delayDecBtn.onclick = () => {
+      const v = (parseInt(delaySlider.value, 10) || 0) - 10;
+      applyDelayValue(v);
+    };
+  }
+
+  // Director role controls removed from simplified UI
+});

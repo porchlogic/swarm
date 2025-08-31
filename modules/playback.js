@@ -9,6 +9,7 @@ export class Playback {
     this.delay = null;
     this.current = null;
     this.speakerDelayMs = 0;
+    this.scheduleAdjustMs = 0; // negative values start earlier relative to global start
     this.getGlobalNowMs = () => Date.now();
   }
 
@@ -19,6 +20,12 @@ export class Playback {
       this.delay.delayTime.cancelScheduledValues(t);
       this.delay.delayTime.setTargetAtTime(this.speakerDelayMs / 1000, t, 0.020);
     }
+  }
+
+  // Negative (<= 0) schedule adjustment to start earlier than the global start time.
+  // Range: [-2500, 0] ms. Positive adjustments are handled by the delay node above.
+  setScheduleAdjust(ms) {
+    this.scheduleAdjustMs = clamp(ms|0, -2500, 0);
   }
 
   setGlobalNowProvider(fn) { this.getGlobalNowMs = fn; }
@@ -58,10 +65,11 @@ export class Playback {
     src.connect(this.delay);
 
     const nowGlobalMs = this.getGlobalNowMs();
-    const delaySec = Math.max(0, (globalStartTimeMs - nowGlobalMs) / 1000);
+    const adj = this.scheduleAdjustMs || 0; // negative -> start earlier
+    const delaySec = Math.max(0, (globalStartTimeMs + adj - nowGlobalMs) / 1000);
     const when = this.ctx.currentTime + delaySec;
 
-    log(this.debugEl, `Scheduling start in ${Math.max(0, delaySec*1000)|0}ms`);
+    log(this.debugEl, `Scheduling start in ${Math.max(0, delaySec*1000)|0}ms (adj: ${adj|0}ms, speakDelay: ${this.speakerDelayMs|0}ms)`);
     src.start(when);
 
     this.current = { buffer, src, fileId, startedAtGlobal: globalStartTimeMs, scheduledAtLocal: when };

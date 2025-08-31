@@ -7,9 +7,9 @@ body {
 }
 #app { max-width: 960px; margin: 0 auto; padding: 16px; }
 
-header { display: flex; align-items: baseline; gap: 12px; }
+header { display: block; text-align: center; position: relative; }
 header h1 { margin: 0; font-size: 20px; font-weight: 700; }
-.status { opacity: 0.8; font-size: 12px; }
+.status { opacity: 0.8; font-size: 12px; margin-top: 4px; }
 
 section { margin: 18px 0; padding: 12px; border: 1px solid #222; border-radius: 12px; background: #121212; }
 section h2 { margin-top: 0; font-size: 16px; }
@@ -19,18 +19,30 @@ section h2 { margin-top: 0; font-size: 16px; }
 input, button, label {
   font-size: 14px;
 }
-input[type="text"], input[type="file"], input[type="range"], input#swarmKey {
+input[type="text"], input[type="file"], input[type="range"], input#swarmName, input#swarmSecret {
   background: #1a1a1a; color: #eaeaea; border: 1px solid #333; padding: 8px; border-radius: 8px;
 }
 button {
   background: #222; color: #fafafa; border: 1px solid #333; padding: 8px 12px; border-radius: 10px; cursor: pointer;
 }
+.leaveBtn {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  background: #2a2a2a;
+  border: 1px solid #3a3a3a;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+}
 button:disabled { opacity: 0.5; cursor: not-allowed; }
 .hint { opacity: 0.7; font-size: 12px; }
 
-#fileList { display: grid; grid-template-columns: 1fr auto auto; gap: 6px 8px; }
-.file-row { padding: 8px; border: 1px solid #222; border-radius: 8px; background: #0f0f0f; grid-column: 1 / -1; display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center; }
-.file-row span { font-size: 13px; }
+#fileList { display: flex; flex-direction: column; gap: 8px; }
+.file-row { padding: 10px 12px; border: 1px solid #222; border-radius: 10px; background: #0f0f0f; display: flex; align-items: center; justify-content: space-between; }
+.file-row.selected { border-color: #fff; }
+.file-row.placeholder { opacity: 0.6; }
+.file-row .name { font-size: 14px; }
 .badge { padding: 2px 6px; border-radius: 6px; font-size: 12px; background: #222; border: 1px solid #333; }
 .badge.ready { background: #143016; border-color: #1f5f25; }
 .badge.fetching { background: #2a1d10; border-color: #7a4a12; }
@@ -39,6 +51,133 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 
 pre#debugLog { max-height: 180px; overflow: auto; background: #0b0b0b; border: 1px solid #222; padding: 8px; border-radius: 8px; }
 
-#speakerDelay {
-  width:100%;
+#delaySlider {
+  width: 100%;
 }
+
+/* New UI elements for simplified two-screen flow */
+.row.center { justify-content: center; }
+
+.primaryPlay {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  background: #1d1d1d;
+  border: 2px solid #444;
+  font-size: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.primaryPlay:disabled { opacity: 0.5; }
+
+.linkish {
+  background: transparent;
+  border: none;
+  color: #9ad;
+  text-decoration: underline;
+  cursor: pointer;
+  font-size: 14px;
+}
+.linkish:hover { color: #cde; }
+
+/* Floating controls button (bottom-centered like a modern slide-up panel trigger) */
+#toggleControlsBtn {
+  position: fixed;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 902; /* above sheet (901) and overlay (900) so it's visible but below any global UI if needed */
+  background: rgba(18,18,18,0.95);
+  border: 1px solid #333;
+  color: #9ad;
+  padding: 8px 14px;
+  border-radius: 20px;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.45);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+/* When the toggle is moved into the sheet it should appear as the top control (no longer fixed) */
+#toggleControlsBtn.in-sheet {
+  position: relative;
+  bottom: auto;
+  left: auto;
+  transform: none;
+  margin: 0 auto 8px auto;
+  z-index: auto;
+  box-shadow: none;
+  /* keep a solid, visible background so it reads as the header control */
+  background: rgba(18,18,18,0.98);
+  border: 1px solid #222;
+  padding: 8px 12px;
+  border-radius: 14px;
+  display: block;
+}
+
+/* Slightly larger tap target on small screens */
+@media (max-width: 420px) {
+  #toggleControlsBtn {
+    padding: 10px 18px;
+    border-radius: 24px;
+    font-size: 15px;
+  }
+}
+
+.hidden-input { display: none; }
+
+.controlsContainer { margin-top: 8px; padding: 12px; border: 1px solid #222; border-radius: 12px; background: #121212; }
+.controlsHeader { text-align: center; opacity: 0.8; margin-bottom: 12px; }
+
+.delayAdjust { display: flex; align-items: center; gap: 10px; }
+.delayBox { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+.delayVal { text-align: center; font-size: 14px; opacity: 0.9; }
+
+.nudgeBtn {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: #1d1d1d;
+  border: 1px solid #333;
+  font-size: 18px;
+}
+
+/* Bottom sheet overlay and panel */
+.sheetOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 180ms ease;
+  z-index: 900;
+}
+.sheetOverlay.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+.bottomSheet {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  background: #111;
+  border-top-left-radius: 16px;
+  border-top-right-radius: 16px;
+  box-shadow: 0 -8px 24px rgba(0,0,0,0.5);
+  transform: translateY(100%);
+  transition: transform 220ms ease;
+  z-index: 901;
+  padding: 10px 12px 16px 12px;
+  border-top: 1px solid #222;
+}
+.bottomSheet.open {
+  transform: translateY(0);
+}
+.sheetHandle {
+  width: 36px;
+  height: 4px;
+  background: #333;
+  border-radius: 4px;
+  margin: 4px auto 12px auto;
+}
+/* clickable rows */
+.file-row { cursor: pointer; }
