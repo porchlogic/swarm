@@ -786,21 +786,31 @@ window.addEventListener("DOMContentLoaded", () => {
   setHeaderExpanded(false);
 
   // Delay control helpers
+  // const applyDelayValue = (v) => {
+  //   v = Math.max(-2500, Math.min(2500, v | 0));
+  //   if (delayVal) delayVal.textContent = `${v} ms`;
+  //   if (playback) {
+  //     if (v >= 0) {
+  //       playback.setSpeakerDelay(v);
+  //       playback.setScheduleAdjust(0);
+  //     } else {
+  //       playback.setSpeakerDelay(0);
+  //       playback.setScheduleAdjust(v);
+  //     }
+  //   }
+  //   if (delaySlider) delaySlider.value = String(v);
+  //   if (state.swarmHash) saveSpeakerDelay(state.swarmHash, v);
+  // };
   const applyDelayValue = (v) => {
     v = Math.max(-2500, Math.min(2500, v | 0));
     if (delayVal) delayVal.textContent = `${v} ms`;
     if (playback) {
-      if (v >= 0) {
-        playback.setSpeakerDelay(v);
-        playback.setScheduleAdjust(0);
-      } else {
-        playback.setSpeakerDelay(0);
-        playback.setScheduleAdjust(v);
-      }
+      playback.setSpeakerDelaySigned(v);  // <-- unified live behavior (both signs)
     }
     if (delaySlider) delaySlider.value = String(v);
     if (state.swarmHash) saveSpeakerDelay(state.swarmHash, v);
   };
+
 
   // Wire initial visible controls (safe before join)
   try {
