@@ -518,3 +518,28 @@ pre#debugLog {
 #qrOverlay {
   z-index: 9999 !important;
 }
+
+/* --- Dot meter under file name --- */
+.file-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dotbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 10px;
+}
+
+.dotbar .dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #1cff8a;
+  /* neon green */
+  box-shadow:
+    0 0 6px rgba(0, 255, 153, 0.75),
+    0 0 12px rgba(0, 255, 153, 0.35);
+}

@@ -125,6 +125,27 @@ function buildSwarmUrl({ name, locked }) {
   return url.origin + url.pathname + "?" + url.searchParams.toString();
 }
 
+// --- Peer file choices (for dot meter): userId -> fileId ---
+const choices = new Map();
+
+function applyChoice(userId, fileId) {
+  const prev = choices.get(userId);
+  if (prev === fileId) return;
+  if (fileId == null) choices.delete(userId);
+  else choices.set(userId, fileId);
+}
+
+function removeChoice(userId) {
+  choices.delete(userId);
+}
+
+function countChoicesByFile() {
+  const m = new Map();
+  for (const fid of choices.values()) {
+    m.set(fid, (m.get(fid) || 0) + 1);
+  }
+  return m;
+}
 
 
 function loadSpeakerDelay(swarmHash) {
@@ -149,9 +170,7 @@ function saveBaseOffset(swarmHash, ms) {
   localStorage.setItem(LS_KEYS.baseOffset(swarmHash), String(ms | 0));
   localStorage.setItem(LS_KEYS.baseOffsetTs(swarmHash), String(Date.now()));
 }
-// function saveSpeakerDelay(swarmHash, ms) {
-//   localStorage.setItem(LS_KEYS.speakerDelay(swarmHash), String(ms | 0));
-// }
+
 
 // Global time = Date.now() + baseOffset
 function getGlobalNow() {
@@ -165,26 +184,38 @@ function renderFiles() {
   const dirId = state.directorFileId;
   const localId = state.localChoiceId;
 
+  const counts = countChoicesByFile();
+
   for (const f of files) {
     fileListEl.appendChild(fileRow({
       file: f,
       selectedDirector: f.fileId === dirId,
       selectedLocal: !isDirector && f.fileId === localId && localId !== dirId,
+      dots: counts.get(f.fileId) || 0,
       onSelectToggle: (fileId) => {
+        // Director: sets directorFileId AND their local choice; Peer: sets only local choice.
         if (director?.isDirector) {
           state.directorFileId = fileId;
           state.localChoiceId = fileId;
+
+          // Broadcast director’s explicit selection & our personal choice for dot meter.
+          control.send("selectFile", { fileId });
+          control.send("choice:set", { userId: state.userId, fileId });
+          applyChoice(state.userId, fileId);
+
           const meta = swarm.getMeta(fileId);
           currentFileLabel.textContent = meta ? `Selected: ${meta.name}` : `Selected: ${fileId}`;
-          control.send("selectFile", { fileId });
-
           if (meta?.ready) playback.ensureDecoded(fileId, meta.blobUrl).catch(() => { });
           updatePlaybackButtons();
           renderFiles();
           return;
         }
 
+        // Peer local choice
         state.localChoiceId = fileId;
+        control.send("choice:set", { userId: state.userId, fileId });
+        applyChoice(state.userId, fileId);
+
         const meta = swarm.getMeta(fileId);
         if (meta?.ready) playback.ensureDecoded(fileId, meta.blobUrl).catch(() => { });
         updatePlaybackButtons();
@@ -196,17 +227,8 @@ function renderFiles() {
   fileListEl.appendChild(plusRow({ onAdd: () => fileInput?.click?.() }));
 }
 
-// function updatePlaybackButtons() {
-//   const dirFile = state.directorFileId;
-//   const hasFile = !!(dirFile && swarm?.getMeta(dirFile)?.ready);
-//   const canControl = !!director?.isDirector && !!offset?.baseLocked;
-//   const playing = !!state.playing;
 
-//   setDisabled("primaryPlayBtn", !(canControl && hasFile));
 
-//   const iconEl = byId("primaryPlayIcon");
-//   if (iconEl) iconEl.textContent = playing ? "■" : "▶";
-// }
 function updatePlaybackButtons() {
   const dirFile = state.directorFileId;
   const hasFile = !!(dirFile && swarm?.getMeta(dirFile)?.ready);
@@ -464,14 +486,6 @@ async function join() {
   function stopGossip() { if (gossipTimer) clearInterval(gossipTimer); gossipTimer = null; }
   startGossip();
 
-
-  
-  // control.on("file:announce", async (m) => {
-  //   if (swarm.hasFile(m.fileId)) return;
-  //   await swarm.ensureRemote(m, () => { });
-  //   renderFiles();
-  //   updatePlaybackButtons();
-  // });
   control.on("file:announce", async (m) => {
     // Accept both versioned (preferred) and legacy announces
     const entry = (m && typeof m.v === "number") ? m : {
@@ -502,22 +516,6 @@ async function join() {
     if (applied) { renderFiles(); updatePlaybackButtons(); }
   });
 
-
-  
-  // Receive a full file list (response to requestFiles) and ensure we fetch each remote file.
-  // control.on("file:list", async (m) => {
-  //   if (!m.files || !Array.isArray(m.files)) return;
-  //   for (const f of m.files) {
-  //     try {
-  //       if (swarm.hasFile(f.fileId)) continue;
-  //       await swarm.ensureRemote(f, () => { });
-  //     } catch (e) {
-  //       console.warn("Failed to fetch remote file:", f.fileId, e);
-  //     }
-  //   }
-  //   renderFiles();
-  //   updatePlaybackButtons();
-  // });
   control.on("file:list", async (m) => {
     if (!m.files || !Array.isArray(m.files)) return;
 
@@ -553,12 +551,23 @@ async function join() {
 
   control.on("selectFile", (m) => {
     state.directorFileId = m.fileId;
+
+    // Treat the active director’s selection as their current choice too.
+    // We don’t know the director’s userId from this message, but the real director
+    // should also be broadcasting choice:set. This line ensures *we* broadcast ours
+    // locally when we are the director (no harm if not).
+    if (director?.isDirector) {
+      control.send("choice:set", { userId: state.userId, fileId: m.fileId });
+      applyChoice(state.userId, m.fileId);
+    }
+
     const meta = swarm.getMeta(m.fileId);
     currentFileLabel.textContent = meta ? `Selected: ${meta.name}` : `Selected: ${m.fileId}`;
     updatePlaybackButtons();
     if (meta?.ready) playback.ensureDecoded(m.fileId, meta.blobUrl).catch(() => { });
     renderFiles();
   });
+
 
   control.on("play", async (m) => { await playFromMessage(m); });
   control.on("stop", () => { stopFromMessage(); });
@@ -569,23 +578,50 @@ async function join() {
     setDisabled("joinBtn", false);
   });
 
+  // --- Choice gossip for dot meter ---
+  // When we (re)join, ask others to announce their current choice
+  control.on("joined", () => {
+    // Clear any stale local view and request fresh choices
+    choices.clear();
+    if (state.localChoiceId || state.directorFileId) {
+      // Announce ours immediately so everyone, including us, counts it
+      const fid = state.localChoiceId || state.directorFileId;
+      control.send("choice:set", { userId: state.userId, fileId: fid || null });
+      applyChoice(state.userId, fid || null);
+    }
+    control.send("choice:who", {}); // ask peers to re-announce
+    renderFiles();
+  });
+
+  // If someone asks, reply with our current choice (or null)
+  control.on("choice:who", () => {
+    const fid = state.localChoiceId || state.directorFileId || null;
+    control.send("choice:set", { userId: state.userId, fileId: fid });
+  });
+
+  // Apply a peer’s choice and rerender
+  control.on("choice:set", (m) => {
+    if (!m || !m.userId) return;
+    applyChoice(m.userId, m.fileId ?? null);
+    renderFiles();
+  });
+
+  // Keep counts clean when peers come/go
+  control.on("presence", (m) => {
+    if (m.action === "leave" && m.userId) {
+      removeChoice(m.userId);
+      renderFiles();
+    }
+    // If someone joins, politely prompt the swarm to re-announce (cheap)
+    if (m.action === "join") {
+      control.send("choice:who", {});
+    }
+  });
+
+
   try { await playback.ensureCtx(); } catch { }
 
-  // // Lock base offset quickly & deterministically
-  // if (persisted.baseOffsetMs !== null) {
-  //   offset.baseLocked = true;
-  //   offset.baseOffsetMs = persisted.baseOffsetMs;
-  //   log(debugEl, `Using persisted baseOffset: ${offset.baseOffsetMs | 0}ms`);
-  // } else {
-  //   setTimeout(() => {
-  //     if (!offset.baseLocked) {
-  //       offset.lockBase();
-  //       saveBaseOffset(state.swarmHash, offset.baseOffsetMs);
-  //       log(debugEl, `Locked baseOffset: ${offset.baseOffsetMs | 0}ms`);
-  //     }
-  //     updatePlaybackButtons();
-  //   }, 1200);
-  // }
+
 
   renderFiles();
   updatePlaybackButtons();
