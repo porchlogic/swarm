@@ -196,6 +196,17 @@ function renderFiles() {
   fileListEl.appendChild(plusRow({ onAdd: () => fileInput?.click?.() }));
 }
 
+// function updatePlaybackButtons() {
+//   const dirFile = state.directorFileId;
+//   const hasFile = !!(dirFile && swarm?.getMeta(dirFile)?.ready);
+//   const canControl = !!director?.isDirector && !!offset?.baseLocked;
+//   const playing = !!state.playing;
+
+//   setDisabled("primaryPlayBtn", !(canControl && hasFile));
+
+//   const iconEl = byId("primaryPlayIcon");
+//   if (iconEl) iconEl.textContent = playing ? "■" : "▶";
+// }
 function updatePlaybackButtons() {
   const dirFile = state.directorFileId;
   const hasFile = !!(dirFile && swarm?.getMeta(dirFile)?.ready);
@@ -204,9 +215,11 @@ function updatePlaybackButtons() {
 
   setDisabled("primaryPlayBtn", !(canControl && hasFile));
 
-  const iconEl = byId("primaryPlayIcon");
-  if (iconEl) iconEl.textContent = playing ? "■" : "▶";
+  // Toggle visibility
+  byId("primaryPlayIconPlay").style.display = playing ? "none" : "";
+  byId("primaryPlayIconPause").style.display = playing ? "" : "none";
 }
+
 
 function updateRoleGlowAndTakeover() {
   const body = document.body;
@@ -652,6 +665,7 @@ window.addEventListener("DOMContentLoaded", () => {
     const globalStartTimeMs = getGlobalNow() + startInMs;
     const m = { fileId: state.directorFileId, globalStartTimeMs };
     control.send("play", m);
+    
     await playFromMessage(m);
   };
 

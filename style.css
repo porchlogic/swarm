@@ -155,8 +155,26 @@ section h2 {
   margin: 8px 0;
 }
 
+.column {
+  display: flex;
+  flex-direction: column;
+  align-items:center;
+  gap: 30px;
+}
+
+.column input {
+  width: 100%;
+}
+
 .row.center {
   justify-content: center;
+}
+/* Stack the join inputs vertically (only for the join section) */
+#joinSection {
+  text-align: center;
+}
+#joinBtn {
+  width: fit-content;
 }
 
 input,
@@ -177,7 +195,7 @@ input#swarmSecret {
   color: #eaeaea;
   border: 1px solid #333;
   padding: 8px;
-  border-radius: 8px;
+  border-radius: 4px;
 }
 
 button {
@@ -216,6 +234,7 @@ button:disabled {
   min-height: 0;
   display: flex;
   flex-direction: column;
+  justify-content: center;
   gap: 8px;
   overflow: auto;
   /* <- the one scrollable area */
@@ -382,16 +401,17 @@ pre#debugLog {
 }
 
 .primaryPlay {
-  width: 96px;
-  height: 96px;
-  border-radius: 50%;
-  background: #1d1d1d;
-  border: 2px solid #444;
-  font-size: 28px;
+  background-color: transparent;
+  border: none;
   display: flex;
   align-items: center;
   justify-content: center;
   touch-action: manipulation;
+}
+
+.primaryPlay svg {
+  width: 120px;
+  height: 120px;
 }
 
 .primaryPlay:disabled {

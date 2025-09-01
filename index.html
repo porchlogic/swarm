@@ -18,7 +18,7 @@
   <div id="app">
     <header>
       <button id="leaveBtn" class="leaveBtn hidden" disabled>←</button>
-      <h1 id="swarmTitle">Audio Swarm</h1>
+      <h1 id="swarmTitle"></h1>
       <div id="statusContainer" class="status hidden">
         <span id="connStatus">disconnected</span> •
         <span id="swarmPeers">peers: 0</span> •
@@ -40,10 +40,11 @@
     </header>
 
     <section id="joinSection">
-      <h2>Join or create a swarm</h2>
-      <div class="row">
+      
+      <div class="column">
+        <h2>Join or create a swarm</h2>
         <input id="swarmName" placeholder="swarm name" />
-        <input id="swarmSecret" placeholder="secret key" type="password" />
+        <input id="swarmSecret" placeholder="optional secret key" type="password" />
         <button id="joinBtn">Create / Join</button>
       </div>
     </section>
@@ -61,9 +62,27 @@
     <!-- Play section is a fixed footer above the controls panel; hidden until joined -->
     <section id="playSection" class="hidden">
       <div class="row center">
-        <button id="primaryPlayBtn" class="primaryPlay" disabled aria-label="Play">
+        <!-- <button id="primaryPlayBtn" class="primaryPlay" disabled aria-label="Play">
           <span id="primaryPlayIcon">▶</span>
+        </button> -->
+        <button id="primaryPlayBtn" class="primaryPlay" disabled aria-label="Play">
+          <!-- Play icon -->
+          <svg id="primaryPlayIconPlay" viewBox="0 0 48 48" width="48" height="48" role="img" aria-hidden="true"
+            focusable="false">
+            <circle cx="24" cy="24" r="22" fill="#222" stroke="#fff" stroke-width="2" />
+            <polygon points="20,16 34,24 20,32" fill="#fff" />
+          </svg>
+        
+          <!-- Pause icon -->
+          <svg id="primaryPlayIconPause" viewBox="0 0 48 48" width="48" height="48" role="img" aria-hidden="true"
+            focusable="false" style="display:none">
+            <circle cx="24" cy="24" r="22" fill="#222" stroke="#fff" stroke-width="2" />
+            <rect x="18" y="16" width="5" height="16" fill="#fff" />
+            <rect x="25" y="16" width="5" height="16" fill="#fff" />
+          </svg>
         </button>
+
+
       </div>
     </section>
 
